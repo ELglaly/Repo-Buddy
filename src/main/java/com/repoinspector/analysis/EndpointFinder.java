@@ -1,0 +1,146 @@
+package com.repoinspector.analysis;
+
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Computable;
+import com.intellij.psi.PsiAnnotation;
+import com.intellij.psi.PsiAnnotationMemberValue;
+import com.intellij.psi.PsiArrayInitializerMemberValue;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiLiteralExpression;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.searches.AnnotatedElementsSearch;
+import com.repoinspector.model.EndpointInfo;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Discovers all Spring MVC REST endpoint methods in the project by searching
+ * for the standard HTTP mapping annotations.
+ * All methods must be called inside a read action.
+ */
+public final class EndpointFinder {
+
+    // Mapping annotation FQNs → default HTTP method label
+    private static final String[][] MAPPING_ANNOTATIONS = {
+            {"org.springframework.web.bind.annotation.GetMapping",    "GET"},
+            {"org.springframework.web.bind.annotation.PostMapping",   "POST"},
+            {"org.springframework.web.bind.annotation.PutMapping",    "PUT"},
+            {"org.springframework.web.bind.annotation.DeleteMapping", "DELETE"},
+            {"org.springframework.web.bind.annotation.PatchMapping",  "PATCH"},
+            {"org.springframework.web.bind.annotation.RequestMapping","REQUEST"},
+    };
+
+    private EndpointFinder() {
+        // utility class
+    }
+
+    /**
+     * Finds all API endpoint methods in the project.
+     * Safe to call from a background thread (wraps PSI access in a read action).
+     *
+     * @param project the current project
+     * @return list of EndpointInfo records, one per annotated method
+     */
+    public static List<EndpointInfo> findAllEndpoints(Project project) {
+        return ApplicationManager.getApplication().runReadAction((Computable<List<EndpointInfo>>) () -> {
+            Set<EndpointInfo> results = new LinkedHashSet<>();
+            GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
+
+            for (String[] entry : MAPPING_ANNOTATIONS) {
+                String annotationFqn = entry[0];
+                String httpVerb = entry[1];
+
+                com.intellij.psi.JavaPsiFacade facade = com.intellij.psi.JavaPsiFacade.getInstance(project);
+                PsiClass annotationClass = facade.findClass(annotationFqn, GlobalSearchScope.allScope(project));
+                if (annotationClass == null) {
+                    continue;
+                }
+
+                AnnotatedElementsSearch.searchPsiMethods(annotationClass, projectScope).forEach(method -> {
+                    PsiClass containingClass = method.getContainingClass();
+                    if (containingClass == null) {
+                        return true; // continue
+                    }
+                    String controllerName = containingClass.getName() != null
+                            ? containingClass.getName() : "Unknown";
+
+                    PsiAnnotation annotation = method.getAnnotation(annotationFqn);
+                    String path = extractPath(annotation);
+                    String resolvedVerb = "REQUEST".equals(httpVerb)
+                            ? extractRequestMethod(annotation) : httpVerb;
+
+                    String signature = CallSiteAnalyzer.buildSignature(method);
+
+                    results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature, method));
+                    return true; // continue forEach
+                });
+            }
+
+            return new ArrayList<>(results);
+        });
+    }
+
+    /**
+     * Extracts the path value from a mapping annotation.
+     * Handles both {@code @GetMapping("/path")} and {@code @GetMapping(value = "/path")}.
+     */
+    private static String extractPath(PsiAnnotation annotation) {
+        if (annotation == null) {
+            return "/";
+        }
+
+        // Try "value" attribute first, then "path"
+        for (String attr : new String[]{"value", "path"}) {
+            PsiAnnotationMemberValue memberValue = annotation.findAttributeValue(attr);
+            if (memberValue == null) {
+                continue;
+            }
+            String extracted = extractStringValue(memberValue);
+            if (extracted != null && !extracted.isEmpty()) {
+                return extracted;
+            }
+        }
+
+        return "/";
+    }
+
+    /**
+     * Extracts the HTTP method from a @RequestMapping annotation's {@code method} attribute.
+     */
+    private static String extractRequestMethod(PsiAnnotation annotation) {
+        if (annotation == null) {
+            return "REQUEST";
+        }
+        PsiAnnotationMemberValue methodValue = annotation.findAttributeValue("method");
+        if (methodValue == null) {
+            return "REQUEST";
+        }
+        // RequestMethod.GET → last segment after '.'
+        String text = methodValue.getText();
+        int dot = text.lastIndexOf('.');
+        return dot >= 0 ? text.substring(dot + 1) : text;
+    }
+
+    /**
+     * Extracts a string literal from an annotation attribute value,
+     * handling both single values and array initializers (first element only).
+     */
+    private static String extractStringValue(PsiAnnotationMemberValue value) {
+        if (value instanceof PsiLiteralExpression literal) {
+            Object v = literal.getValue();
+            return v != null ? v.toString() : null;
+        }
+        if (value instanceof PsiArrayInitializerMemberValue array) {
+            PsiAnnotationMemberValue[] initializers = array.getInitializers();
+            if (initializers.length > 0) {
+                return extractStringValue(initializers[0]);
+            }
+        }
+        return null;
+    }
+}
