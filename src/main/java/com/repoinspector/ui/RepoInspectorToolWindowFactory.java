@@ -25,9 +25,14 @@ public class RepoInspectorToolWindowFactory implements ToolWindowFactory {
         Content usageContent = contentFactory.createContent(usagePanel, "Repository Usage", false);
         toolWindow.getContentManager().addContent(usageContent);
 
-        // Tab 2: new call-chain tracer
+        // Tab 2: call-chain tracer
         CallChainPanel chainPanel = new CallChainPanel(project);
         Content chainContent = contentFactory.createContent(chainPanel, "Call Chain Tracer", false);
         toolWindow.getContentManager().addContent(chainContent);
+
+        // Tab 3: outbound API calls analyzer
+        OutboundCallsPanel outboundPanel = new OutboundCallsPanel(project);
+        Content outboundContent = contentFactory.createContent(outboundPanel, "Outbound API Calls", false);
+        toolWindow.getContentManager().addContent(outboundContent);
     }
 }

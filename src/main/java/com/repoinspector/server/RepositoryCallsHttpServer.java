@@ -9,9 +9,12 @@ import com.repoinspector.analysis.CallChainAnalyzer;
 import com.repoinspector.analysis.CallChainCache;
 import com.repoinspector.analysis.CallSiteAnalyzer;
 import com.repoinspector.analysis.EndpointFinder;
+import com.repoinspector.analysis.OutboundApiCallFinder;
+import com.repoinspector.analysis.OutboundCallCache;
 import com.repoinspector.model.CallChainNode;
 import com.repoinspector.model.EndpointInfo;
 import com.repoinspector.model.OperationType;
+import com.repoinspector.model.OutboundApiCall;
 import com.repoinspector.model.RepositoryMethodInfo;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -22,6 +25,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 
 /**
@@ -62,6 +66,7 @@ public class RepositoryCallsHttpServer implements Disposable {
             server.createContext("/api/repository-calls", this::handleRepositoryCalls);
             server.createContext("/api/endpoint-calls", this::handleEndpointCalls);
             server.createContext("/api/endpoints", this::handleEndpoints);
+            server.createContext("/api/outbound-calls", this::handleOutboundCalls);
             server.createContext("/health", this::handleHealth);
             server.setExecutor(Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "RepoBuddy-HTTP");
@@ -249,6 +254,73 @@ public class RepositoryCallsHttpServer implements Disposable {
         sendResponse(exchange, 200, endpointCallsToJson(ep, nodes));
     }
 
+    /**
+     * GET /api/outbound-calls
+     * GET /api/outbound-calls?endpoint=/api/login   (optional filter by inbound endpoint path)
+     *
+     * Returns a JSON array of every outbound HTTP API call detected in the open project,
+     * with resolved URLs, HTTP methods, headers, body fields, and confidence levels.
+     * When {@code ?endpoint=} is supplied, restricts results to calls reachable from that
+     * inbound Spring endpoint via the existing DFS call-chain analysis.
+     */
+    private void handleOutboundCalls(HttpExchange exchange) throws IOException {
+        if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+
+        Project project = getOpenProject();
+        if (project == null) {
+            sendResponse(exchange, 503, "{\"error\":\"No project is currently open in the IDE\"}");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        String endpointFilter = queryParam(query, "endpoint"); // optional
+
+        @SuppressWarnings("unchecked")
+        List<OutboundApiCall>[] holder = new List[1];
+        Object lock = new Object();
+
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            if (endpointFilter != null && !endpointFilter.isBlank()) {
+                List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
+                EndpointInfo match = endpoints.stream()
+                        .filter(ep -> pathMatches(ep.path(), endpointFilter))
+                        .findFirst()
+                        .orElse(null);
+                holder[0] = match != null
+                        ? OutboundApiCallFinder.findReachableFrom(match, project)
+                        : List.of();
+            } else {
+                List<OutboundApiCall> cached = OutboundCallCache.getOrNull(project);
+                if (cached == null) {
+                    cached = OutboundApiCallFinder.findAll(project);
+                    OutboundCallCache.put(project, cached);
+                }
+                holder[0] = cached;
+            }
+            synchronized (lock) { lock.notifyAll(); }
+        });
+
+        synchronized (lock) {
+            try {
+                lock.wait(30_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                sendResponse(exchange, 500, "{\"error\":\"Analysis interrupted\"}");
+                return;
+            }
+        }
+
+        if (holder[0] == null) {
+            sendResponse(exchange, 500, "{\"error\":\"Analysis timed out\"}");
+            return;
+        }
+
+        sendResponse(exchange, 200, outboundCallsToJson(holder[0]));
+    }
+
     private void handleHealth(HttpExchange exchange) throws IOException {
         sendResponse(exchange, 200, "{\"status\":\"ok\",\"port\":" + PORT + "}");
     }
@@ -256,6 +328,52 @@ public class RepositoryCallsHttpServer implements Disposable {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private static String outboundCallsToJson(List<OutboundApiCall> calls) {
+        StringBuilder sb = new StringBuilder("[\n");
+        for (int i = 0; i < calls.size(); i++) {
+            OutboundApiCall c = calls.get(i);
+            sb.append("  {")
+                    .append("\"callerClass\":").append(jsonString(c.callerClass())).append(',')
+                    .append("\"callerMethod\":").append(jsonString(c.callerMethod())).append(',')
+                    .append("\"httpMethod\":").append(jsonString(c.httpMethod())).append(',')
+                    .append("\"resolvedUrl\":").append(jsonString(c.resolvedUrl())).append(',')
+                    .append("\"headers\":").append(mapToJson(c.headers())).append(',')
+                    .append("\"queryParams\":").append(mapToJson(c.queryParams())).append(',')
+                    .append("\"bodyFields\":").append(listToJsonOrNull(c.bodyFields())).append(',')
+                    .append("\"confidence\":").append(jsonString(c.confidence().name())).append(',')
+                    .append("\"reason\":").append(jsonString(c.reason())).append(',')
+                    .append("\"clientType\":").append(jsonString(c.clientType().name()))
+                    .append('}');
+            if (i < calls.size() - 1) sb.append(',');
+            sb.append('\n');
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    private static String mapToJson(Map<String, String> map) {
+        if (map == null || map.isEmpty()) return "{}";
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> e : map.entrySet()) {
+            if (!first) sb.append(',');
+            sb.append(jsonString(e.getKey())).append(':').append(jsonString(e.getValue()));
+            first = false;
+        }
+        return sb.append('}').toString();
+    }
+
+    private static String listToJsonOrNull(List<String> list) {
+        if (list == null) return "null";
+        if (list.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < list.size(); i++) {
+            sb.append(jsonString(list.get(i)));
+            if (i < list.size() - 1) sb.append(',');
+        }
+        return sb.append(']').toString();
+    }
 
     private static void sendResponse(HttpExchange exchange, int statusCode, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
