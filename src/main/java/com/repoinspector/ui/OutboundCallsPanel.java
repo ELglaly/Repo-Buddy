@@ -1,6 +1,7 @@
 package com.repoinspector.ui;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBScrollPane;
 import com.repoinspector.analysis.EndpointFinder;
@@ -127,15 +128,16 @@ public class OutboundCallsPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     private void loadEndpoints() {
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
-            SwingUtilities.invokeLater(() -> {
-                endpointCombo.removeAllItems();
-                for (EndpointInfo ep : endpoints) {
-                    endpointCombo.addItem(new EndpointItem(ep));
-                }
-            });
-        });
+        DumbService.getInstance(project).runWhenSmart(() ->
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
+                SwingUtilities.invokeLater(() -> {
+                    endpointCombo.removeAllItems();
+                    for (EndpointInfo ep : endpoints) {
+                        endpointCombo.addItem(new EndpointItem(ep));
+                    }
+                });
+            }));
     }
 
     // -------------------------------------------------------------------------

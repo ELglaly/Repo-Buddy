@@ -22,11 +22,13 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Embedded HTTP server that exposes repository call-count data via a REST endpoint.
@@ -96,33 +98,27 @@ public class RepositoryCallsHttpServer implements Disposable {
             return;
         }
 
-        // Run analysis on a pooled thread, block here (HTTP handler thread) for the result
-        CallSiteAnalyzer.AnalysisResult[] resultHolder = new CallSiteAnalyzer.AnalysisResult[1];
-        Object lock = new Object();
-
+        CompletableFuture<CallSiteAnalyzer.AnalysisResult> future = new CompletableFuture<>();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            resultHolder[0] = CallSiteAnalyzer.analyzeAll(project);
-            synchronized (lock) {
-                lock.notifyAll();
+            try {
+                future.complete(CallSiteAnalyzer.analyzeAll(project));
+            } catch (Exception e) {
+                future.completeExceptionally(e);
             }
         });
 
-        synchronized (lock) {
-            try {
-                lock.wait(30_000); // 30-second timeout
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                sendResponse(exchange, 500, "{\"error\":\"Analysis interrupted\"}");
-                return;
-            }
-        }
-
-        if (resultHolder[0] == null) {
+        CallSiteAnalyzer.AnalysisResult result;
+        try {
+            result = future.get(30, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
             sendResponse(exchange, 500, "{\"error\":\"Analysis timed out\"}");
+            return;
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "{\"error\":\"Analysis failed: " + jsonString(e.getMessage()) + "}");
             return;
         }
 
-        String json = toJson(resultHolder[0].getInfos());
+        String json = toJson(result.getInfos());
         sendResponse(exchange, 200, json);
     }
 
@@ -143,22 +139,27 @@ public class RepositoryCallsHttpServer implements Disposable {
             return;
         }
 
-        List<EndpointInfo>[] holder = new List[1];
-        Object lock = new Object();
+        CompletableFuture<List<EndpointInfo>> future = new CompletableFuture<>();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            holder[0] = EndpointFinder.findAllEndpoints(project);
-            synchronized (lock) { lock.notifyAll(); }
-        });
-        synchronized (lock) {
-            try { lock.wait(30_000); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                sendResponse(exchange, 500, "{\"error\":\"Interrupted\"}");
-                return;
+            try {
+                future.complete(EndpointFinder.findAllEndpoints(project));
+            } catch (Exception e) {
+                future.completeExceptionally(e);
             }
+        });
+
+        List<EndpointInfo> endpoints;
+        try {
+            endpoints = future.get(30, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            sendResponse(exchange, 500, "{\"error\":\"Analysis timed out\"}");
+            return;
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "{\"error\":\"Analysis failed: " + jsonString(e.getMessage()) + "}");
+            return;
         }
 
         StringBuilder sb = new StringBuilder("[\n");
-        List<EndpointInfo> endpoints = holder[0];
         for (int i = 0; i < endpoints.size(); i++) {
             EndpointInfo ep = endpoints.get(i);
             sb.append("  {")
@@ -206,50 +207,52 @@ public class RepositoryCallsHttpServer implements Disposable {
         }
 
         // Find + analyze on a background thread
-        Object[] holder = new Object[1]; // EndpointInfo or String error
-        Object lock = new Object();
+        record EndpointResult(EndpointInfo ep, List<CallChainNode> nodes) {}
 
+        CompletableFuture<EndpointResult> future = new CompletableFuture<>();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
-
-            EndpointInfo match = endpoints.stream()
-                    .filter(ep -> pathMatches(ep.path(), pathFilter))
-                    .filter(ep -> methodFilter == null || ep.httpMethod().equalsIgnoreCase(methodFilter))
-                    .findFirst()
-                    .orElse(null);
-
-            if (match == null) {
-                holder[0] = "NOT_FOUND";
-            } else {
-                List<CallChainNode> cached = CallChainCache.getOrNull(match, project);
-                if (cached == null) {
-                    cached = CallChainAnalyzer.analyze(match, project);
-                    CallChainCache.put(match, project, cached);
+            try {
+                List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
+                EndpointInfo match = endpoints.stream()
+                        .filter(ep -> pathMatches(ep.path(), pathFilter))
+                        .filter(ep -> methodFilter == null || ep.httpMethod().equalsIgnoreCase(methodFilter))
+                        .findFirst()
+                        .orElse(null);
+                if (match == null) {
+                    future.complete(null);
+                } else {
+                    List<CallChainNode> cached = CallChainCache.getOrNull(match, project);
+                    if (cached == null) {
+                        cached = CallChainAnalyzer.analyze(match, project);
+                        CallChainCache.put(match, project, cached);
+                    }
+                    future.complete(new EndpointResult(match, cached));
                 }
-                holder[0] = new Object[]{match, cached};
+            } catch (Exception e) {
+                future.completeExceptionally(e);
             }
-            synchronized (lock) { lock.notifyAll(); }
         });
 
-        synchronized (lock) {
-            try { lock.wait(30_000); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                sendResponse(exchange, 500, "{\"error\":\"Analysis interrupted\"}");
-                return;
-            }
+        EndpointResult result;
+        try {
+            result = future.get(30, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            sendResponse(exchange, 500, "{\"error\":\"Analysis timed out\"}");
+            return;
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "{\"error\":\"Analysis failed: " + jsonString(e.getMessage()) + "}");
+            return;
         }
 
-        if ("NOT_FOUND".equals(holder[0])) {
+        if (result == null) {
             sendResponse(exchange, 404,
                     "{\"error\":\"No endpoint found matching path=" + jsonString(pathFilter) +
                     (methodFilter != null ? " method=" + methodFilter : "") + "\"}");
             return;
         }
 
-        Object[] result = (Object[]) holder[0];
-        EndpointInfo ep = (EndpointInfo) result[0];
-        @SuppressWarnings("unchecked")
-        List<CallChainNode> nodes = (List<CallChainNode>) result[1];
+        EndpointInfo ep = result.ep();
+        List<CallChainNode> nodes = result.nodes();
 
         sendResponse(exchange, 200, endpointCallsToJson(ep, nodes));
     }
@@ -278,47 +281,43 @@ public class RepositoryCallsHttpServer implements Disposable {
         String query = exchange.getRequestURI().getQuery();
         String endpointFilter = queryParam(query, "endpoint"); // optional
 
-        @SuppressWarnings("unchecked")
-        List<OutboundApiCall>[] holder = new List[1];
-        Object lock = new Object();
-
+        CompletableFuture<List<OutboundApiCall>> future = new CompletableFuture<>();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            if (endpointFilter != null && !endpointFilter.isBlank()) {
-                List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
-                EndpointInfo match = endpoints.stream()
-                        .filter(ep -> pathMatches(ep.path(), endpointFilter))
-                        .findFirst()
-                        .orElse(null);
-                holder[0] = match != null
-                        ? OutboundApiCallFinder.findReachableFrom(match, project)
-                        : List.of();
-            } else {
-                List<OutboundApiCall> cached = OutboundCallCache.getOrNull(project);
-                if (cached == null) {
-                    cached = OutboundApiCallFinder.findAll(project);
-                    OutboundCallCache.put(project, cached);
+            try {
+                if (endpointFilter != null && !endpointFilter.isBlank()) {
+                    List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
+                    EndpointInfo match = endpoints.stream()
+                            .filter(ep -> pathMatches(ep.path(), endpointFilter))
+                            .findFirst()
+                            .orElse(null);
+                    future.complete(match != null
+                            ? OutboundApiCallFinder.findReachableFrom(match, project)
+                            : List.of());
+                } else {
+                    List<OutboundApiCall> cached = OutboundCallCache.getOrNull(project);
+                    if (cached == null) {
+                        cached = OutboundApiCallFinder.findAll(project);
+                        OutboundCallCache.put(project, cached);
+                    }
+                    future.complete(cached);
                 }
-                holder[0] = cached;
+            } catch (Exception e) {
+                future.completeExceptionally(e);
             }
-            synchronized (lock) { lock.notifyAll(); }
         });
 
-        synchronized (lock) {
-            try {
-                lock.wait(30_000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                sendResponse(exchange, 500, "{\"error\":\"Analysis interrupted\"}");
-                return;
-            }
-        }
-
-        if (holder[0] == null) {
+        List<OutboundApiCall> calls;
+        try {
+            calls = future.get(30, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
             sendResponse(exchange, 500, "{\"error\":\"Analysis timed out\"}");
+            return;
+        } catch (Exception e) {
+            sendResponse(exchange, 500, "{\"error\":\"Analysis failed: " + jsonString(e.getMessage()) + "}");
             return;
         }
 
-        sendResponse(exchange, 200, outboundCallsToJson(holder[0]));
+        sendResponse(exchange, 200, outboundCallsToJson(calls));
     }
 
     private void handleHealth(HttpExchange exchange) throws IOException {

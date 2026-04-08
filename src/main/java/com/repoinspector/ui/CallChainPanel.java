@@ -1,6 +1,7 @@
 package com.repoinspector.ui;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBScrollPane;
 import com.repoinspector.analysis.CallChainAnalyzer;
@@ -126,8 +127,9 @@ public class CallChainPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     private void loadEndpoints() {
-        statusLabel.setText("Scanning for endpoints...");
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+        statusLabel.setText("Waiting for IDE indexing to complete...");
+        DumbService.getInstance(project).runWhenSmart(() ->
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
             List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
             SwingUtilities.invokeLater(() -> {
                 endpointCombo.removeAllItems();
@@ -140,7 +142,7 @@ public class CallChainPanel extends JPanel {
                     statusLabel.setText(endpoints.size() + " endpoint(s) found. Select one and click Trace.");
                 }
             });
-        });
+        }));
     }
 
     // -------------------------------------------------------------------------

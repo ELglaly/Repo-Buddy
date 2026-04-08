@@ -1,6 +1,8 @@
 package com.repoinspector.analysis;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
 import com.intellij.psi.PsiClass;
@@ -68,30 +70,35 @@ public final class CallSiteAnalyzer {
      * @return an AnalysisResult pairing RepositoryMethodInfo records with PsiMethod references
      */
     public static AnalysisResult analyzeAll(Project project) {
-        return ApplicationManager.getApplication().runReadAction((Computable<AnalysisResult>) () -> {
-            List<RepositoryMethodInfo> infos = new ArrayList<>();
-            List<PsiMethod> methods = new ArrayList<>();
+        AnalysisResult[] holder = new AnalysisResult[1];
+        ProgressManager.getInstance().runProcess(
+            () -> holder[0] = ApplicationManager.getApplication().runReadAction((Computable<AnalysisResult>) () -> {
+                List<RepositoryMethodInfo> infos = new ArrayList<>();
+                List<PsiMethod> methods = new ArrayList<>();
 
-            List<PsiClass> repos = RepositoryFinder.findAllRepositories(project);
+                List<PsiClass> repos = RepositoryFinder.findAllRepositories(project);
 
-            for (PsiClass repoClass : repos) {
-                String repoName = repoClass.getName();
-                if (repoName == null) {
-                    continue;
+                for (PsiClass repoClass : repos) {
+                    String repoName = repoClass.getName();
+                    if (repoName == null) {
+                        continue;
+                    }
+
+                    for (PsiMethod method : RepositoryFinder.getRepositoryMethods(repoClass)) {
+                        String methodName = method.getName();
+                        String signature = buildSignature(method);
+                        int count = countCallSites(method, project);
+
+                        infos.add(new RepositoryMethodInfo(repoName, methodName, signature, count));
+                        methods.add(method);
+                    }
                 }
 
-                for (PsiMethod method : RepositoryFinder.getRepositoryMethods(repoClass)) {
-                    String methodName = method.getName();
-                    String signature = buildSignature(method);
-                    int count = countCallSites(method, project);
-
-                    infos.add(new RepositoryMethodInfo(repoName, methodName, signature, count));
-                    methods.add(method);
-                }
-            }
-
-            return new AnalysisResult(infos, methods);
-        });
+                return new AnalysisResult(infos, methods);
+            }),
+            new EmptyProgressIndicator()
+        );
+        return holder[0];
     }
 
     /**
