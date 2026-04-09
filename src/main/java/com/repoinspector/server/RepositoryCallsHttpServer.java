@@ -3,6 +3,7 @@ package com.repoinspector.server;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.repoinspector.analysis.CallChainAnalyzer;
@@ -278,6 +279,11 @@ public class RepositoryCallsHttpServer implements Disposable {
             return;
         }
 
+        if (DumbService.getInstance(project).isDumb()) {
+            sendResponse(exchange, 503, "{\"error\":\"IDE index is still being built — try again shortly\"}");
+            return;
+        }
+
         String query = exchange.getRequestURI().getQuery();
         String endpointFilter = queryParam(query, "endpoint"); // optional
 
@@ -294,12 +300,10 @@ public class RepositoryCallsHttpServer implements Disposable {
                             ? OutboundApiCallFinder.findReachableFrom(match, project)
                             : List.of());
                 } else {
-                    List<OutboundApiCall> cached = OutboundCallCache.getOrNull(project);
-                    if (cached == null) {
-                        cached = OutboundApiCallFinder.findAll(project);
-                        OutboundCallCache.put(project, cached);
-                    }
-                    future.complete(cached);
+                    OutboundCallCache.clear(); // force fresh scan in case stale empty result is cached
+                    List<OutboundApiCall> calls = OutboundApiCallFinder.findAll(project);
+                    OutboundCallCache.put(project, calls);
+                    future.complete(calls);
                 }
             } catch (Exception e) {
                 future.completeExceptionally(e);

@@ -1,5 +1,7 @@
 package com.repoinspector.analysis;
 
+import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
@@ -41,28 +43,32 @@ public final class RepositoryFinder {
      * @return deduplicated list of repository PsiClass instances
      */
     public static List<PsiClass> findAllRepositories(Project project) {
-        Set<PsiClass> results = new LinkedHashSet<>();
-        GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
-        JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
+        List<PsiClass>[] holder = new List[1];
+        ProgressManager.getInstance().runProcess(() -> {
+            Set<PsiClass> results = new LinkedHashSet<>();
+            GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
+            JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
 
-        // Strategy 1: annotation-based search
-        PsiClass annotationClass = facade.findClass(REPOSITORY_ANNOTATION, GlobalSearchScope.allScope(project));
-        if (annotationClass != null) {
-            AnnotatedElementsSearch.searchPsiClasses(annotationClass, projectScope)
-                    .forEach(results::add);
-        }
-
-        // Strategy 2: hierarchy-based search for Spring Data base types
-        for (String fqn : SPRING_DATA_BASE_TYPES) {
-            PsiClass baseClass = facade.findClass(fqn, GlobalSearchScope.allScope(project));
-            if (baseClass == null) {
-                continue;
+            // Strategy 1: annotation-based search
+            PsiClass annotationClass = facade.findClass(REPOSITORY_ANNOTATION, GlobalSearchScope.allScope(project));
+            if (annotationClass != null) {
+                AnnotatedElementsSearch.searchPsiClasses(annotationClass, projectScope)
+                        .forEach(results::add);
             }
-            ClassInheritorsSearch.search(baseClass, projectScope, true)
-                    .forEach(results::add);
-        }
 
-        return new ArrayList<>(results);
+            // Strategy 2: hierarchy-based search for Spring Data base types
+            for (String fqn : SPRING_DATA_BASE_TYPES) {
+                PsiClass baseClass = facade.findClass(fqn, GlobalSearchScope.allScope(project));
+                if (baseClass == null) {
+                    continue;
+                }
+                ClassInheritorsSearch.search(baseClass, projectScope, true)
+                        .forEach(results::add);
+            }
+
+            holder[0] = new ArrayList<>(results);
+        }, new EmptyProgressIndicator());
+        return holder[0];
     }
 
     /**

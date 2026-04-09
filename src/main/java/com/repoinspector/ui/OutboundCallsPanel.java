@@ -147,14 +147,11 @@ public class OutboundCallsPanel extends JPanel {
     private void runScanAll() {
         statusLabel.setText("Scanning project for outbound HTTP calls...");
         tableModel.setRowCount(0);
+        OutboundCallCache.clear(); // force fresh scan — cache may hold stale empty results
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<OutboundApiCall> cached = OutboundCallCache.getOrNull(project);
-            if (cached == null) {
-                cached = OutboundApiCallFinder.findAll(project);
-                OutboundCallCache.put(project, cached);
-            }
-            final List<OutboundApiCall> results = cached;
+            List<OutboundApiCall> results = OutboundApiCallFinder.findAll(project);
+            OutboundCallCache.put(project, results);
             SwingUtilities.invokeLater(() -> renderResults(results, "project-wide scan"));
         });
     }
@@ -171,11 +168,13 @@ public class OutboundCallsPanel extends JPanel {
                 + " " + ep.path() + "...");
         tableModel.setRowCount(0);
 
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<OutboundApiCall> results = OutboundApiCallFinder.findReachableFrom(ep, project);
-            SwingUtilities.invokeLater(() ->
-                    renderResults(results, ep.httpMethod() + " " + ep.path()));
-        });
+        DumbService.getInstance(project).runWhenSmart(() ->
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                List<OutboundApiCall> results = OutboundApiCallFinder.findReachableFrom(ep, project);
+                SwingUtilities.invokeLater(() ->
+                        renderResults(results, ep.httpMethod() + " " + ep.path()));
+            })
+        );
     }
 
     // -------------------------------------------------------------------------

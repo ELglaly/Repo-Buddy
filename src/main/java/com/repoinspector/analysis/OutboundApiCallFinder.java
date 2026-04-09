@@ -1,6 +1,9 @@
 package com.repoinspector.analysis;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
 import com.intellij.psi.JavaPsiFacade;
@@ -17,7 +20,6 @@ import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiNewExpression;
 import com.intellij.psi.PsiType;
 import com.intellij.psi.search.GlobalSearchScope;
-import com.intellij.psi.search.PsiShortNamesCache;
 import com.intellij.psi.search.searches.AnnotatedElementsSearch;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
@@ -49,6 +51,8 @@ import java.util.Set;
  * <p>All PSI access is wrapped in a read action. Safe to call from a background thread.
  */
 public final class OutboundApiCallFinder {
+
+    private static final Logger LOG = Logger.getInstance(OutboundApiCallFinder.class);
 
     // RestTemplate method names and the HTTP verb they imply
     private static final Map<String, String> REST_TEMPLATE_METHODS = Map.of(
@@ -91,19 +95,24 @@ public final class OutboundApiCallFinder {
      * @return list of detected {@link OutboundApiCall} records, one per call site
      */
     public static List<OutboundApiCall> findAll(Project project) {
-        return ApplicationManager.getApplication().runReadAction((Computable<List<OutboundApiCall>>) () -> {
-            List<OutboundApiCall> results = new ArrayList<>();
-            GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
+        List<OutboundApiCall> results = new ArrayList<>();
+        GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
 
+        // ReferencesSearch / AnnotatedElementsSearch must NOT be called inside runReadAction —
+        // they manage read-lock acquisition internally (via processFilesConcurrentlyDespiteWriteActions).
+        // We only need a ProgressIndicator installed on the thread.
+        ProgressManager.getInstance().runProcess(() -> {
             scanRestTemplate(project, scope, results);
-            scanWebClient(project, scope, results);
+            // scanWebClient uses visitor pattern — needs an explicit read action
+            ApplicationManager.getApplication().runReadAction(() ->
+                    scanWebClient(project, scope, results));
             scanOkHttp(project, scope, results);
             scanFeignClients(project, scope, results);
             scanHttpUrlConnection(project, scope, results);
             scanApacheHttpClient(project, scope, results);
+        }, new EmptyProgressIndicator());
 
-            return results;
-        });
+        return results;
     }
 
     /**
@@ -140,19 +149,28 @@ public final class OutboundApiCallFinder {
 
     private static void scanRestTemplate(Project project, GlobalSearchScope scope,
                                           List<OutboundApiCall> results) {
-        PsiShortNamesCache cache = PsiShortNamesCache.getInstance(project);
+        // Lookup inside read action; search runs outside
+        PsiClass restTemplateClass = ApplicationManager.getApplication().runReadAction(
+                (Computable<PsiClass>) () -> JavaPsiFacade.getInstance(project).findClass(
+                        "org.springframework.web.client.RestTemplate",
+                        GlobalSearchScope.allScope(project)));
+        if (restTemplateClass == null) {
+            LOG.info("[OutboundApiCallFinder] RestTemplate class not found in project classpath — skipping");
+            return;
+        }
+        LOG.info("[OutboundApiCallFinder] RestTemplate class found, scanning for usages...");
 
         for (Map.Entry<String, String> entry : REST_TEMPLATE_METHODS.entrySet()) {
             String methodName = entry.getKey();
             String impliedVerb = entry.getValue();
 
-            for (PsiMethod method : cache.getMethodsByName(methodName, scope)) {
-                PsiClass containingClass = method.getContainingClass();
-                if (containingClass == null) continue;
-                if (!"org.springframework.web.client.RestTemplate"
-                        .equals(containingClass.getQualifiedName())) continue;
-
-                ReferencesSearch.search(method, scope).forEach(ref -> {
+            PsiMethod[] methods = ApplicationManager.getApplication().runReadAction(
+                    (Computable<PsiMethod[]>) () -> restTemplateClass.findMethodsByName(methodName, false));
+            LOG.info("[OutboundApiCallFinder] RestTemplate." + methodName + " — " + methods.length + " PSI method(s) found");
+            for (PsiMethod method : methods) {
+                int[] refCount = {0};
+                ReferencesSearch.search(method, scope).forEach(ref -> {  // outside runReadAction
+                    refCount[0]++;
                     PsiMethodCallExpression call =
                             PsiTreeUtil.getParentOfType(ref.getElement(), PsiMethodCallExpression.class);
                     if (call == null) return true;
@@ -182,6 +200,7 @@ public final class OutboundApiCallFinder {
                             Map.of(), Map.of(), bodyFields, ClientType.REST_TEMPLATE);
                     return true;
                 });
+                LOG.info("[OutboundApiCallFinder] RestTemplate." + methodName + " — " + refCount[0] + " reference(s) in project scope");
             }
         }
     }
@@ -233,12 +252,12 @@ public final class OutboundApiCallFinder {
 
     private static void scanOkHttp(Project project, GlobalSearchScope scope,
                                     List<OutboundApiCall> results) {
-        JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
-        PsiClass builderClass = facade.findClass("okhttp3.Request.Builder",
-                GlobalSearchScope.allScope(project));
+        PsiClass builderClass = ApplicationManager.getApplication().runReadAction(
+                (Computable<PsiClass>) () -> JavaPsiFacade.getInstance(project).findClass(
+                        "okhttp3.Request.Builder", GlobalSearchScope.allScope(project)));
         if (builderClass == null) return;
 
-        ReferencesSearch.search(builderClass, scope).forEach(ref -> {
+        ReferencesSearch.search(builderClass, scope).forEach(ref -> {  // outside runReadAction
             PsiNewExpression newExpr =
                     PsiTreeUtil.getParentOfType(ref.getElement(), PsiNewExpression.class);
             if (newExpr == null) return true;
@@ -270,18 +289,20 @@ public final class OutboundApiCallFinder {
 
     private static void scanFeignClients(Project project, GlobalSearchScope scope,
                                           List<OutboundApiCall> results) {
-        JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
-        PsiClass feignAnnotation = facade.findClass(
-                "org.springframework.cloud.openfeign.FeignClient",
-                GlobalSearchScope.allScope(project));
-        if (feignAnnotation == null) {
-            // Try older package
-            feignAnnotation = facade.findClass(
-                    "feign.RequestLine", GlobalSearchScope.allScope(project));
-        }
+        PsiClass feignAnnotation = ApplicationManager.getApplication().runReadAction(
+                (Computable<PsiClass>) () -> {
+                    JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
+                    PsiClass ann = facade.findClass(
+                            "org.springframework.cloud.openfeign.FeignClient",
+                            GlobalSearchScope.allScope(project));
+                    if (ann == null) {
+                        ann = facade.findClass("feign.RequestLine", GlobalSearchScope.allScope(project));
+                    }
+                    return ann;
+                });
         if (feignAnnotation == null) return;
 
-        AnnotatedElementsSearch.searchPsiClasses(feignAnnotation, scope).forEach(feignInterface -> {
+        AnnotatedElementsSearch.searchPsiClasses(feignAnnotation, scope).forEach(feignInterface -> {  // outside runReadAction
             // Extract base URL from @FeignClient(url = "...") or name
             String baseUrl = extractFeignBaseUrl(feignInterface, project);
 
@@ -309,14 +330,16 @@ public final class OutboundApiCallFinder {
 
     private static void scanHttpUrlConnection(Project project, GlobalSearchScope scope,
                                                List<OutboundApiCall> results) {
-        PsiShortNamesCache cache = PsiShortNamesCache.getInstance(project);
+        PsiMethod[] openConnectionMethods = ApplicationManager.getApplication().runReadAction(
+                (Computable<PsiMethod[]>) () -> {
+                    PsiClass urlClass = JavaPsiFacade.getInstance(project)
+                            .findClass("java.net.URL", GlobalSearchScope.allScope(project));
+                    return urlClass != null ? urlClass.findMethodsByName("openConnection", false)
+                                           : PsiMethod.EMPTY_ARRAY;
+                });
 
-        for (PsiMethod openConnection : cache.getMethodsByName("openConnection", scope)) {
-            PsiClass containing = openConnection.getContainingClass();
-            if (containing == null) continue;
-            if (!"java.net.URL".equals(containing.getQualifiedName())) continue;
-
-            ReferencesSearch.search(openConnection, scope).forEach(ref -> {
+        for (PsiMethod openConnection : openConnectionMethods) {
+            ReferencesSearch.search(openConnection, scope).forEach(ref -> {  // outside runReadAction
                 PsiMethodCallExpression call =
                         PsiTreeUtil.getParentOfType(ref.getElement(), PsiMethodCallExpression.class);
                 if (call == null) return true;
@@ -354,16 +377,16 @@ public final class OutboundApiCallFinder {
 
     private static void scanApacheHttpClient(Project project, GlobalSearchScope scope,
                                               List<OutboundApiCall> results) {
-        JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
-
         for (Map.Entry<String, String> entry : APACHE_REQUEST_CLASSES.entrySet()) {
             String fqn = entry.getKey();
             String verb = entry.getValue();
 
-            PsiClass requestClass = facade.findClass(fqn, GlobalSearchScope.allScope(project));
+            PsiClass requestClass = ApplicationManager.getApplication().runReadAction(
+                    (Computable<PsiClass>) () -> JavaPsiFacade.getInstance(project)
+                            .findClass(fqn, GlobalSearchScope.allScope(project)));
             if (requestClass == null) continue;
 
-            ReferencesSearch.search(requestClass, scope).forEach(ref -> {
+            ReferencesSearch.search(requestClass, scope).forEach(ref -> {  // outside runReadAction
                 PsiNewExpression newExpr =
                         PsiTreeUtil.getParentOfType(ref.getElement(), PsiNewExpression.class);
                 if (newExpr == null) return true;

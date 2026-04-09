@@ -1,6 +1,8 @@
 package com.repoinspector.analysis;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.progress.EmptyProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
 import com.intellij.psi.PsiAnnotation;
@@ -47,42 +49,47 @@ public final class EndpointFinder {
      * @return list of EndpointInfo records, one per annotated method
      */
     public static List<EndpointInfo> findAllEndpoints(Project project) {
-        return ApplicationManager.getApplication().runReadAction((Computable<List<EndpointInfo>>) () -> {
-            Set<EndpointInfo> results = new LinkedHashSet<>();
-            GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
+        List<EndpointInfo>[] holder = new List[1];
+        ProgressManager.getInstance().runProcess(
+            () -> holder[0] = ApplicationManager.getApplication().runReadAction((Computable<List<EndpointInfo>>) () -> {
+                Set<EndpointInfo> results = new LinkedHashSet<>();
+                GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
 
-            for (String[] entry : MAPPING_ANNOTATIONS) {
-                String annotationFqn = entry[0];
-                String httpVerb = entry[1];
+                for (String[] entry : MAPPING_ANNOTATIONS) {
+                    String annotationFqn = entry[0];
+                    String httpVerb = entry[1];
 
-                com.intellij.psi.JavaPsiFacade facade = com.intellij.psi.JavaPsiFacade.getInstance(project);
-                PsiClass annotationClass = facade.findClass(annotationFqn, GlobalSearchScope.allScope(project));
-                if (annotationClass == null) {
-                    continue;
+                    com.intellij.psi.JavaPsiFacade facade = com.intellij.psi.JavaPsiFacade.getInstance(project);
+                    PsiClass annotationClass = facade.findClass(annotationFqn, GlobalSearchScope.allScope(project));
+                    if (annotationClass == null) {
+                        continue;
+                    }
+
+                    AnnotatedElementsSearch.searchPsiMethods(annotationClass, projectScope).forEach(method -> {
+                        PsiClass containingClass = method.getContainingClass();
+                        if (containingClass == null) {
+                            return true; // continue
+                        }
+                        String controllerName = containingClass.getName() != null
+                                ? containingClass.getName() : "Unknown";
+
+                        PsiAnnotation annotation = method.getAnnotation(annotationFqn);
+                        String path = extractPath(annotation);
+                        String resolvedVerb = "REQUEST".equals(httpVerb)
+                                ? extractRequestMethod(annotation) : httpVerb;
+
+                        String signature = CallSiteAnalyzer.buildSignature(method);
+
+                        results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature, method));
+                        return true; // continue forEach
+                    });
                 }
 
-                AnnotatedElementsSearch.searchPsiMethods(annotationClass, projectScope).forEach(method -> {
-                    PsiClass containingClass = method.getContainingClass();
-                    if (containingClass == null) {
-                        return true; // continue
-                    }
-                    String controllerName = containingClass.getName() != null
-                            ? containingClass.getName() : "Unknown";
-
-                    PsiAnnotation annotation = method.getAnnotation(annotationFqn);
-                    String path = extractPath(annotation);
-                    String resolvedVerb = "REQUEST".equals(httpVerb)
-                            ? extractRequestMethod(annotation) : httpVerb;
-
-                    String signature = CallSiteAnalyzer.buildSignature(method);
-
-                    results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature, method));
-                    return true; // continue forEach
-                });
-            }
-
-            return new ArrayList<>(results);
-        });
+                return new ArrayList<>(results);
+            }),
+            new EmptyProgressIndicator()
+        );
+        return holder[0];
     }
 
     /**
