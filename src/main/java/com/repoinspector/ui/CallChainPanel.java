@@ -8,6 +8,7 @@ import com.repoinspector.analysis.CallChainCache;
 import com.repoinspector.analysis.EndpointFinder;
 import com.repoinspector.model.CallChainNode;
 import com.repoinspector.model.EndpointInfo;
+import com.repoinspector.model.OperationType;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
@@ -17,7 +18,7 @@ import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
 
 /**
@@ -26,11 +27,15 @@ import java.util.List;
  * <p>Layout:
  * <pre>
  *  ┌─ NORTH ─────────────────────────────────────────────────────────────────┐
- *  │  Endpoint: [combo▼]  [ Trace ]  [ \u21BB Refresh ]  [ \u2398 Copy ]           │
+ *  │  Endpoint: [combo▼]  [Trace]  [↻ Refresh]  [⌘ Copy]                    │
+ *  │  [⊞ Expand All]  [⊟ Collapse All]  [✖ Clear Cache]  [Repos Only toggle] │
  *  │  &lt;status label&gt;                                                         │
  *  └─────────────────────────────────────────────────────────────────────────┘
  *  ┌─ CENTER ────────────────────────────────────────────────────────────────┐
  *  │  JTree — call-chain result with custom colour renderer                  │
+ *  └─────────────────────────────────────────────────────────────────────────┘
+ *  ┌─ SOUTH ─────────────────────────────────────────────────────────────────┐
+ *  │  Summary: READ N  WRITE N  @Tx N  Entities: A, B, C                     │
  *  └─────────────────────────────────────────────────────────────────────────┘
  * </pre>
  *
@@ -44,6 +49,8 @@ public class CallChainPanel extends JPanel {
     private final JTree                  callChainTree;
     private final DefaultTreeModel       treeModel;
     private final JLabel                 statusLabel;
+    private final JLabel                 summaryLabel;
+    private final JToggleButton          reposOnlyToggle;
 
     /** Last result kept for clipboard export. */
     private List<CallChainNode> lastResult   = List.of();
@@ -59,7 +66,6 @@ public class CallChainPanel extends JPanel {
      * Must be called on the Event Dispatch Thread.
      */
     public void showResult(EndpointInfo endpoint, List<CallChainNode> nodes) {
-        // Select the matching endpoint in the combo if present.
         for (int i = 0; i < endpointCombo.getItemCount(); i++) {
             EndpointInfo item = endpointCombo.getItemAt(i);
             if (item.controllerName().equals(endpoint.controllerName())
@@ -85,7 +91,7 @@ public class CallChainPanel extends JPanel {
         endpointCombo.setPrototypeDisplayValue(
                 new EndpointInfo("GET", "/placeholder/path", "Controller", "method()", null));
 
-        // ── Toolbar buttons ───────────────────────────────────────────────────
+        // ── Primary action buttons ────────────────────────────────────────────
         JButton traceButton   = UITheme.button("Trace");
         JButton refreshButton = UITheme.button("\u21BB  Refresh");
         JButton copyButton    = UITheme.button("\u2398  Copy");
@@ -97,12 +103,40 @@ public class CallChainPanel extends JPanel {
         refreshButton.addActionListener(e -> loadEndpoints());
         copyButton.addActionListener(e    -> copyAsText());
 
-        JPanel toolbarRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
-        toolbarRow.add(new JLabel("Endpoint:"));
-        toolbarRow.add(endpointCombo);
-        toolbarRow.add(traceButton);
-        toolbarRow.add(refreshButton);
-        toolbarRow.add(copyButton);
+        JPanel primaryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        primaryRow.add(new JLabel("Endpoint:"));
+        primaryRow.add(endpointCombo);
+        primaryRow.add(traceButton);
+        primaryRow.add(refreshButton);
+        primaryRow.add(copyButton);
+
+        // ── Secondary action buttons ──────────────────────────────────────────
+        JButton expandAllBtn   = UITheme.button("\u229E  Expand All");
+        JButton collapseAllBtn = UITheme.button("\u229F  Collapse All");
+        JButton clearCacheBtn  = UITheme.button("\u2715  Clear Cache");
+
+        expandAllBtn.setFont(expandAllBtn.getFont().deriveFont(11f));
+        collapseAllBtn.setFont(collapseAllBtn.getFont().deriveFont(11f));
+        clearCacheBtn.setFont(clearCacheBtn.getFont().deriveFont(11f));
+        clearCacheBtn.setForeground(UITheme.WARNING);
+
+        expandAllBtn.addActionListener(e   -> expandAll());
+        collapseAllBtn.addActionListener(e -> collapseAll());
+        clearCacheBtn.addActionListener(e  -> clearCache());
+
+        reposOnlyToggle = new JToggleButton("Repos Only");
+        reposOnlyToggle.setFont(reposOnlyToggle.getFont().deriveFont(11f));
+        reposOnlyToggle.setFocusPainted(false);
+        reposOnlyToggle.setToolTipText("Show only repository method nodes in the tree");
+        reposOnlyToggle.addItemListener(e -> {
+            if (lastEndpoint != null) renderResult(lastEndpoint, lastResult, true);
+        });
+
+        JPanel secondaryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        secondaryRow.add(expandAllBtn);
+        secondaryRow.add(collapseAllBtn);
+        secondaryRow.add(clearCacheBtn);
+        secondaryRow.add(reposOnlyToggle);
 
         // ── Status label ──────────────────────────────────────────────────────
         statusLabel = new JLabel("  Select an endpoint and click Trace.");
@@ -112,7 +146,8 @@ public class CallChainPanel extends JPanel {
 
         JPanel north = new JPanel(new BorderLayout());
         north.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UITheme.ACCENT.darker()));
-        north.add(toolbarRow,   BorderLayout.NORTH);
+        north.add(primaryRow,   BorderLayout.NORTH);
+        north.add(secondaryRow, BorderLayout.CENTER);
         north.add(statusLabel,  BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
@@ -132,6 +167,15 @@ public class CallChainPanel extends JPanel {
         });
 
         add(new JBScrollPane(callChainTree), BorderLayout.CENTER);
+
+        // ── Summary bar (SOUTH) ───────────────────────────────────────────────
+        summaryLabel = new JLabel("  No trace run yet.");
+        summaryLabel.setFont(summaryLabel.getFont().deriveFont(11f));
+        summaryLabel.setForeground(UITheme.MUTED);
+        summaryLabel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UITheme.ACCENT.darker()),
+                BorderFactory.createEmptyBorder(4, 10, 4, 10)));
+        add(summaryLabel, BorderLayout.SOUTH);
 
         SwingUtilities.invokeLater(this::loadEndpoints);
     }
@@ -184,14 +228,18 @@ public class CallChainPanel extends JPanel {
         lastResult   = nodes;
         lastEndpoint = endpoint;
 
+        boolean reposOnly = reposOnlyToggle.isSelected();
+        List<CallChainNode> visible = reposOnly
+                ? nodes.stream().filter(n -> n.depth() == 0 || n.isRepository()).toList()
+                : nodes;
+
         DefaultMutableTreeNode root = new DefaultMutableTreeNode(endpoint);
 
-        // depth → most-recent parent node at that depth
         List<DefaultMutableTreeNode> depthStack = new ArrayList<>();
         depthStack.add(root);
 
-        for (CallChainNode node : nodes) {
-            if (node.depth() == 0) continue;   // endpoint is the tree root
+        for (CallChainNode node : visible) {
+            if (node.depth() == 0) continue;
 
             DefaultMutableTreeNode treeNode = new DefaultMutableTreeNode(node);
             int parentDepth = node.depth() - 1;
@@ -216,12 +264,68 @@ public class CallChainPanel extends JPanel {
         String cacheNote = fromCache ? "  (cached)" : "";
         setStatus("Found " + repoCount + " repository call(s) in chain." + cacheNote,
                 repoCount > 0 ? UITheme.SUCCESS : UITheme.WARNING);
+
+        updateSummary(nodes);
     }
+
+    // =========================================================================
+    // Summary bar
+    // =========================================================================
+
+    private void updateSummary(List<CallChainNode> nodes) {
+        long reads  = nodes.stream().filter(n -> n.isRepository() && n.operationType() == OperationType.READ).count();
+        long writes = nodes.stream().filter(n -> n.isRepository() && n.operationType() == OperationType.WRITE).count();
+        long txs    = nodes.stream().filter(CallChainNode::isTransactional).count();
+
+        Set<String> entities = new LinkedHashSet<>();
+        nodes.stream()
+             .filter(n -> n.isRepository() && !n.entityName().isEmpty())
+             .map(CallChainNode::entityName)
+             .forEach(entities::add);
+
+        String entityText = entities.isEmpty() ? "none" : String.join(", ", entities);
+
+        String html = "<html>"
+                + "<font color='" + UITheme.toHex(UITheme.SUCCESS) + "'><b>READ&nbsp;" + reads + "</b></font>"
+                + "&nbsp;&nbsp;"
+                + "<font color='" + UITheme.toHex(UITheme.WARNING) + "'><b>WRITE&nbsp;" + writes + "</b></font>"
+                + "&nbsp;&nbsp;"
+                + "<font color='" + UITheme.toHex(UITheme.ACCENT) + "'><b>@Tx&nbsp;" + txs + "</b></font>"
+                + "&nbsp;&nbsp;&nbsp;"
+                + "<font color='" + UITheme.toHex(UITheme.MUTED) + "'>Entities: " + entityText + "</font>"
+                + "</html>";
+        summaryLabel.setText(html);
+    }
+
+    // =========================================================================
+    // Tree expand / collapse
+    // =========================================================================
 
     private void expandAll() {
         for (int i = 0; i < callChainTree.getRowCount(); i++) {
             callChainTree.expandRow(i);
         }
+    }
+
+    private void collapseAll() {
+        // Collapse from the bottom up so parent rows are not renumbered mid-loop
+        for (int i = callChainTree.getRowCount() - 1; i >= 1; i--) {
+            callChainTree.collapseRow(i);
+        }
+    }
+
+    // =========================================================================
+    // Clear cache
+    // =========================================================================
+
+    private void clearCache() {
+        EndpointInfo selected = (EndpointInfo) endpointCombo.getSelectedItem();
+        if (selected == null) {
+            setStatus("No endpoint selected — nothing to clear.", UITheme.WARNING);
+            return;
+        }
+        CallChainCache.clear();
+        setStatus("Cache cleared. Click Trace to re-analyze.", UITheme.SUCCESS);
     }
 
     // =========================================================================
@@ -271,16 +375,35 @@ public class CallChainPanel extends JPanel {
     }
 
     // =========================================================================
-    // Combo renderer
+    // Combo renderer — HTTP method colour badges
     // =========================================================================
 
     private static final class EndpointComboRenderer extends DefaultListCellRenderer {
+
+        private static final Map<String, Color> HTTP_COLORS = Map.of(
+                "GET",    new Color( 80, 200, 120),   // green
+                "POST",   new Color( 97, 175, 239),   // blue
+                "PUT",    new Color(255, 195,  90),   // amber
+                "DELETE", new Color(255,  70,  70),   // red
+                "PATCH",  new Color(206, 145, 120)    // orange
+        );
+        private static final Color HTTP_DEFAULT = new Color(160, 160, 160);
+
         @Override
         public Component getListCellRendererComponent(
                 JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+
             if (value instanceof EndpointInfo ep) {
-                setText(ep.toString());
+                Color methodColor = HTTP_COLORS.getOrDefault(
+                        ep.httpMethod().toUpperCase(), HTTP_DEFAULT);
+                String hex = String.format("#%02x%02x%02x",
+                        methodColor.getRed(), methodColor.getGreen(), methodColor.getBlue());
+                setText("<html><font color='" + hex + "'><b>[" + ep.httpMethod() + "]</b></font>"
+                        + "&nbsp;" + ep.path()
+                        + "&nbsp;<font color='#808080'>[" + ep.controllerName()
+                        + "." + ep.methodSignature() + "]</font></html>");
             }
             return this;
         }

@@ -53,22 +53,47 @@
     Supports String, Long, Boolean, Pageable, UUID, LocalDate, enums, and arbitrary JSON objects.
   </li>
   <li>
-    <b>🎲 Random data generation</b> — fill fields instantly with type-aware sample values.
-    Recognises 30+ name hints (email, phone, city, status, …) and known types (Pageable, UUID,
-    LocalDate, BigDecimal, …).
+    <b>&#127922; Random data generation</b> — fill fields instantly with type-aware sample values.
+    Recognises 30+ name hints (email, phone, city, status, &hellip;) and known types (Pageable, UUID,
+    LocalDate, BigDecimal, &hellip;). A <b>&#127922; Generate All</b> button fills every field at once;
+    individual per-field dice buttons let you randomise one parameter at a time.
+  </li>
+  <li>
+    <b>Pageable / PageRequest support</b> — JSON-driven input with page, size, and sort direction.
+    The agent deserialises it into a real <code>PageRequest</code> — no Jackson abstract-type crash.
+  </li>
+  <li>
+    <b>Enum reflection</b> — enum parameters are resolved against the app's loaded constants
+    via reflection. Falls back to the first real constant (with a helpful log message listing all
+    available values) so execution never crashes on an unknown placeholder.
+  </li>
+  <li>
+    <b>&#9679; Agent status indicator</b> — the popup header shows a live
+    <i>&#9679; Agent Ready</i> / <i>&#9679; Offline</i> badge so you know at a glance whether
+    the agent is reachable before hitting Run.
   </li>
   <li>
     <b>Call chain tracer</b> — pick any Spring MVC endpoint from the combo box and trace every
-    repository method reachable from it. Results are shown as an expandable tree with double-click
-    navigation to source.
+    repository method reachable from it. Results appear as an expandable tree with double-click
+    navigation to source. HTTP method badges are colour-coded (GET=green, POST=blue, PUT=amber,
+    DELETE=red). Expand All / Collapse All and Clear Cache controls are built in.
+    A summary bar counts READ / WRITE / @Transactional calls and unique entity types.
   </li>
   <li>
     <b>Repository usage table</b> — lists all repository methods with call-count badges
     (red = never called, amber = rarely called, green = frequently called).
+    Live search filters by repository or method name. A <i>Show Unused Only</i> toggle
+    lets you focus on dead code. Export to CSV with one click.
   </li>
   <li>
     <b>Zero configuration</b> — the plugin automatically injects <code>-javaagent</code> into
     your run configurations on project open. No extra dependencies or properties needed.
+    Compatible with IntelliJ 2024.1+ via the <code>ProjectActivity</code> API.
+  </li>
+  <li>
+    <b>Colorful, theme-aware UI</b> — all panels use a unified <code>UITheme</code> palette
+    built on <code>JBColor</code>, so the plugin looks great in both IntelliJ Light and Dark
+    themes with zero configuration.
   </li>
 </ul>
 
@@ -77,7 +102,7 @@
   <li>Open a Spring Boot project. RepoBuddy patches your run configuration automatically.</li>
   <li>Start your app with the ▶ button. The agent binds to a free port and writes it to a temp file.</li>
   <li>Click the ▶ gutter icon next to any repository method.</li>
-  <li>Fill in parameters (or hit 🎲 Generate All), then click Run.</li>
+  <li>Fill in parameters (or hit &#127922; Generate All), then click Run.</li>
   <li>See the JSON result, captured SQL, and execution time — all in the popup.</li>
 </ol>
 
@@ -101,18 +126,23 @@
   <change-notes><![CDATA[
 <h3>1.0.0 — Initial Release</h3>
 <ul>
-  <li>Run ▶ gutter icon on all Spring Data repository methods</li>
+  <li>Run &#9654; gutter icon on all Spring Data repository methods</li>
   <li>Live execution via embedded Java agent (no Spring Security interference)</li>
   <li>SQL capture via Hibernate StatementInspector</li>
   <li>Smart parameter form with per-type widgets</li>
-  <li>🎲 Random data generation with 30+ name-hint rules</li>
-  <li>Pageable / PageRequest support with sort parsing</li>
-  <li>Enum resolution against real constants via reflection</li>
-  <li>Call chain tracer tool window with expandable tree</li>
-  <li>Repository usage table with colour-coded call counts</li>
-  <li>Automatic run-configuration patching on project open</li>
-  <li>Agent status indicator (● Agent Ready / Offline) in the popup header</li>
-  <li>Execution time colour-coded green / amber / red in result panel</li>
+  <li>&#127922; Random data generation with 30+ name-hint rules (email, phone, city, status, UUID, &hellip;)</li>
+  <li>Per-field &#127922; dice buttons + &#127922; Generate All — fill one or all parameters in one click</li>
+  <li>Pageable / PageRequest support — JSON input deserialized into a real PageRequest with sort parsing;
+      fixes Jackson <code>InvalidDefinitionException</code> on abstract interface</li>
+  <li>Enum resolution against real constants via reflection; falls back to first constant with a log
+      listing all available values — never crashes on an unknown placeholder</li>
+  <li>Call chain tracer — expandable tree with colour-coded HTTP method badges (GET/POST/PUT/DELETE),
+      Expand All / Collapse All, Clear Cache, and a summary bar (READ/WRITE/@Transactional/entities)</li>
+  <li>Repository usage table — live search filter, Show Unused Only toggle, Export CSV</li>
+  <li>Automatic run-configuration patching on project open (ProjectActivity, IntelliJ 2024.1+)</li>
+  <li>&#9679; Agent Ready / Offline live status indicator in popup header</li>
+  <li>Execution time colour-coded green / amber / red (&#60;100 ms / 100-499 ms / &#8805;500 ms)</li>
+  <li>Colorful, theme-aware UI via unified UITheme palette (JBColor — light &amp; dark themes)</li>
 </ul>
   ]]></change-notes>
 
