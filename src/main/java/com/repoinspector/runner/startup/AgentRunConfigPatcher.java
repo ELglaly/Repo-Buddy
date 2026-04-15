@@ -8,7 +8,9 @@ import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.startup.StartupActivity;
+import com.intellij.openapi.startup.ProjectActivity;
+import kotlin.Unit;
+import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,7 +29,7 @@ import java.nio.file.StandardCopyOption;
  * directory on first use so the path is always valid regardless of where IntelliJ
  * installed the plugin.
  */
-public final class AgentRunConfigPatcher implements StartupActivity, DumbAware {
+public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
 
     /** Resource path inside the plugin JAR. */
     private static final String AGENT_RESOURCE = "/agent/repoBuddy-agent.jar";
@@ -36,8 +38,14 @@ public final class AgentRunConfigPatcher implements StartupActivity, DumbAware {
     /** Substring used to detect / update an existing agent flag. */
     private static final String AGENT_MARKER   = "repoBuddy-agent";
 
+    /**
+     * Called by IntelliJ once per project open (ProjectActivity contract).
+     * The Continuation parameter is the Kotlin coroutine machinery — we ignore it
+     * and return Unit.INSTANCE to signal synchronous completion.
+     */
     @Override
-    public void runActivity(@NotNull Project project) {
+    public Object execute(@NotNull Project project,
+                          @NotNull Continuation<? super Unit> continuation) {
         Path agentJar = extractAgentJar();
         if (agentJar == null) {
             notify(project,
@@ -45,7 +53,7 @@ public final class AgentRunConfigPatcher implements StartupActivity, DumbAware {
                     "Could not find the embedded agent JAR. "
                             + "Please reinstall the RepoBuddy plugin.",
                     NotificationType.WARNING);
-            return;
+            return Unit.INSTANCE;
         }
 
         // Normalise to forward slashes — works on all JVMs including Windows.
@@ -53,6 +61,8 @@ public final class AgentRunConfigPatcher implements StartupActivity, DumbAware {
 
         ApplicationManager.getApplication().invokeLater(
                 () -> patchConfigurations(project, jvmFlag));
+
+        return Unit.INSTANCE;
     }
 
     // -------------------------------------------------------------------------

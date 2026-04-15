@@ -8,7 +8,7 @@ import com.intellij.ui.content.ContentFactory;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Creates the "Repo Inspector" tool window with two tabs:
+ * Creates the "Repo Buddy" tool window with two tabs:
  * <ol>
  *   <li>"Repository Usage" — call-count table ({@link RepoInspectorPanel})</li>
  *   <li>"Call Chain Tracer" — per-endpoint repository tracer ({@link CallChainPanel})</li>

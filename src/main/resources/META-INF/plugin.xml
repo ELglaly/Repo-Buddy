@@ -8,15 +8,113 @@
     <name>RepoBuddy</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
-    <vendor email="support@yourcompany.com" url="https://www.yourcompany.com">YourCompany</vendor>
+    <vendor email="sherifelglaly@gmail.com" url="https://elglaly.github.io/Sherif-Elglaly/">Sherif Elglaly</vendor>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description><![CDATA[
-    Enter short description for your plugin here.<br>
-    <em>most HTML tags may be used</em>
+<h2>RepoBuddy — Run &amp; Inspect Spring Data Repositories from IntelliJ</h2>
+
+<p>
+  RepoBuddy lets you execute any Spring Data JPA repository method directly from the editor —
+  without writing a test, opening a REST client, or redeploying your app.
+  Click the gutter icon next to a repository method, fill in the parameters, and see the real
+  query result, the captured SQL, and the execution time instantly.
+</p>
+
+<h3>Who is it for?</h3>
+<ul>
+  <li>Spring Boot developers who debug data-layer issues daily</li>
+  <li>Teams building complex JPA queries who need fast feedback</li>
+  <li>Developers reviewing or refactoring repository logic</li>
+</ul>
+
+<h3>Key Features</h3>
+<ul>
+  <li>
+    <b>Run ▶ gutter icon</b> — every Spring Data repository method gets a clickable run marker.
+    One click opens the execution popup.
+  </li>
+  <li>
+    <b>Live execution against your running app</b> — RepoBuddy injects a lightweight agent into
+    your Spring Boot process. The real JPA context executes the method; no simulation or mocking.
+  </li>
+  <li>
+    <b>SQL capture</b> — Hibernate's StatementInspector intercepts every SQL statement triggered
+    by the call. You see the exact queries, in order, with timestamps.
+  </li>
+  <li>
+    <b>JSON result viewer</b> — the return value is serialized and displayed with execution time
+    colour-coded green / amber / red by speed.
+  </li>
+  <li>
+    <b>Smart parameter form</b> — input fields are generated per parameter type.
+    Supports String, Long, Boolean, Pageable, UUID, LocalDate, enums, and arbitrary JSON objects.
+  </li>
+  <li>
+    <b>🎲 Random data generation</b> — fill fields instantly with type-aware sample values.
+    Recognises 30+ name hints (email, phone, city, status, …) and known types (Pageable, UUID,
+    LocalDate, BigDecimal, …).
+  </li>
+  <li>
+    <b>Call chain tracer</b> — pick any Spring MVC endpoint from the combo box and trace every
+    repository method reachable from it. Results are shown as an expandable tree with double-click
+    navigation to source.
+  </li>
+  <li>
+    <b>Repository usage table</b> — lists all repository methods with call-count badges
+    (red = never called, amber = rarely called, green = frequently called).
+  </li>
+  <li>
+    <b>Zero configuration</b> — the plugin automatically injects <code>-javaagent</code> into
+    your run configurations on project open. No extra dependencies or properties needed.
+  </li>
+</ul>
+
+<h3>How it works</h3>
+<ol>
+  <li>Open a Spring Boot project. RepoBuddy patches your run configuration automatically.</li>
+  <li>Start your app with the ▶ button. The agent binds to a free port and writes it to a temp file.</li>
+  <li>Click the ▶ gutter icon next to any repository method.</li>
+  <li>Fill in parameters (or hit 🎲 Generate All), then click Run.</li>
+  <li>See the JSON result, captured SQL, and execution time — all in the popup.</li>
+</ol>
+
+<h3>Supported parameter types</h3>
+<p>
+  String, Long, Integer, Boolean, Double, Float, Short, Byte, BigDecimal,
+  UUID, LocalDate, LocalDateTime, ZonedDateTime, Pageable / PageRequest (with sort),
+  Sort, Enum (resolved against real constants via reflection), List&lt;String&gt;,
+  List&lt;Long&gt;, and any other type accepted as JSON.
+</p>
+
+<h3>Requirements</h3>
+<ul>
+  <li>IntelliJ IDEA 2024.1 or later (Community or Ultimate)</li>
+  <li>Java 17 or later</li>
+  <li>Spring Boot 3.x with Spring Data JPA on the classpath</li>
+  <li>App must be running locally (started from IntelliJ)</li>
+</ul>
   ]]></description>
+
+  <change-notes><![CDATA[
+<h3>1.0.0 — Initial Release</h3>
+<ul>
+  <li>Run ▶ gutter icon on all Spring Data repository methods</li>
+  <li>Live execution via embedded Java agent (no Spring Security interference)</li>
+  <li>SQL capture via Hibernate StatementInspector</li>
+  <li>Smart parameter form with per-type widgets</li>
+  <li>🎲 Random data generation with 30+ name-hint rules</li>
+  <li>Pageable / PageRequest support with sort parsing</li>
+  <li>Enum resolution against real constants via reflection</li>
+  <li>Call chain tracer tool window with expandable tree</li>
+  <li>Repository usage table with colour-coded call counts</li>
+  <li>Automatic run-configuration patching on project open</li>
+  <li>Agent status indicator (● Agent Ready / Offline) in the popup header</li>
+  <li>Execution time colour-coded green / amber / red in result panel</li>
+</ul>
+  ]]></change-notes>
 
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
@@ -31,7 +129,7 @@
                 language="JAVA"
                 implementationClass="com.repoinspector.gutter.RepoMethodGutterProvider"/>
 
-        <toolWindow id="Repo Inspector"
+        <toolWindow id="RepoBuddy"
                     anchor="bottom"
                     factoryClass="com.repoinspector.ui.RepoInspectorToolWindowFactory"/>
 
