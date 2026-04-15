@@ -1,19 +1,21 @@
 package com.repoinspector.analysis;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.AnnotatedElementsSearch;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
-import com.intellij.psi.JavaPsiFacade;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Locates all Spring repository classes/interfaces in a project using two strategies:
@@ -21,6 +23,8 @@ import java.util.Set;
  * 2. Hierarchy-based: interfaces extending Spring Data repository base types
  */
 public final class RepositoryFinder {
+
+    private static final Logger LOG = Logger.getInstance(RepositoryFinder.class);
 
     private static final String REPOSITORY_ANNOTATION = "org.springframework.stereotype.Repository";
 
@@ -43,7 +47,7 @@ public final class RepositoryFinder {
      * @return deduplicated list of repository PsiClass instances
      */
     public static List<PsiClass> findAllRepositories(Project project) {
-        List<PsiClass>[] holder = new List[1];
+        AtomicReference<List<PsiClass>> holder = new AtomicReference<>();
         ProgressManager.getInstance().runProcess(() -> {
             Set<PsiClass> results = new LinkedHashSet<>();
             GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
@@ -66,9 +70,10 @@ public final class RepositoryFinder {
                         .forEach(results::add);
             }
 
-            holder[0] = new ArrayList<>(results);
+            LOG.info("findAllRepositories: discovered " + results.size() + " repository class(es)");
+            holder.set(new ArrayList<>(results));
         }, new EmptyProgressIndicator());
-        return holder[0];
+        return holder.get();
     }
 
     /**

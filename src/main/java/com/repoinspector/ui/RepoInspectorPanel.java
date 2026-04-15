@@ -15,7 +15,6 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -27,13 +26,14 @@ public class RepoInspectorPanel extends JPanel {
 
     private static final String[] COLUMN_NAMES = {"Repository", "Method", "Signature", "Call Count"};
     private static final int CALL_COUNT_COLUMN = 3;
+    private static final int CALL_COUNT_WARNING_THRESHOLD = 2;
 
     private final Project project;
     private final DefaultTableModel tableModel;
     private final JBTable table;
 
     // Parallel list of PsiMethod references for double-click navigation
-    private List<PsiMethod> methodList = new ArrayList<>();
+    private List<PsiMethod> methodList = List.of();
 
     public RepoInspectorPanel(Project project) {
         super(new BorderLayout());
@@ -96,9 +96,9 @@ public class RepoInspectorPanel extends JPanel {
      */
     private void updateTable(CallSiteAnalyzer.AnalysisResult result) {
         tableModel.setRowCount(0);
-        methodList = new ArrayList<>(result.getMethods());
+        methodList = result.methods();
 
-        for (RepositoryMethodInfo info : result.getInfos()) {
+        for (RepositoryMethodInfo info : result.infos()) {
             tableModel.addRow(new Object[]{
                     info.repositoryName(),
                     info.methodName(),
@@ -149,7 +149,7 @@ public class RepoInspectorPanel extends JPanel {
             if (!isSelected && value instanceof Integer count) {
                 if (count == 0) {
                     setBackground(COLOR_RED);
-                } else if (count <= 2) {
+                } else if (count <= CALL_COUNT_WARNING_THRESHOLD) {
                     setBackground(COLOR_YELLOW);
                 } else {
                     setBackground(COLOR_GREEN);

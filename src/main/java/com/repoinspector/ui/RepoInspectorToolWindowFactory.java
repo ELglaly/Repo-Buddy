@@ -10,8 +10,8 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Creates the "Repo Inspector" tool window with two tabs:
  * <ol>
- *   <li>"Repository Usage" — the existing call-count table ({@link RepoInspectorPanel})</li>
- *   <li>"Call Chain Tracer" — the new per-endpoint repository tracer ({@link CallChainPanel})</li>
+ *   <li>"Repository Usage" — call-count table ({@link RepoInspectorPanel})</li>
+ *   <li>"Call Chain Tracer" — per-endpoint repository tracer ({@link CallChainPanel})</li>
  * </ol>
  */
 public class RepoInspectorToolWindowFactory implements ToolWindowFactory {
@@ -30,9 +30,5 @@ public class RepoInspectorToolWindowFactory implements ToolWindowFactory {
         Content chainContent = contentFactory.createContent(chainPanel, "Call Chain Tracer", false);
         toolWindow.getContentManager().addContent(chainContent);
 
-        // Tab 3: outbound API calls analyzer
-        OutboundCallsPanel outboundPanel = new OutboundCallsPanel(project);
-        Content outboundContent = contentFactory.createContent(outboundPanel, "Outbound API Calls", false);
-        toolWindow.getContentManager().addContent(outboundContent);
     }
 }

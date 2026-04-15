@@ -46,6 +46,24 @@ public final class CallChainCache {
     }
 
     /**
+     * Returns the cached result if valid, otherwise runs a fresh analysis, stores it, and returns it.
+     * Safe to call from a background thread.
+     *
+     * @param endpoint the endpoint to trace
+     * @param project  the current project
+     * @return analysis nodes — never null
+     */
+    public static List<CallChainNode> getOrAnalyze(EndpointInfo endpoint, Project project) {
+        List<CallChainNode> cached = getOrNull(endpoint, project);
+        if (cached != null) {
+            return cached;
+        }
+        List<CallChainNode> nodes = CallChainAnalyzer.analyze(endpoint, project);
+        put(endpoint, project, nodes);
+        return nodes;
+    }
+
+    /**
      * Stores the analysis result for {@code endpoint} associated with the current
      * PSI modification stamp.
      */

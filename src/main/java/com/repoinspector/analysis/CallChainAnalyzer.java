@@ -1,14 +1,18 @@
 package com.repoinspector.analysis;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
+import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.JavaRecursiveElementVisitor;
 import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiClassType;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiReferenceExpression;
+import com.intellij.psi.PsiType;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
 import com.repoinspector.model.CallChainNode;
@@ -33,6 +37,8 @@ import java.util.Set;
  * </ul>
  */
 public final class CallChainAnalyzer {
+
+    private static final Logger LOG = Logger.getInstance(CallChainAnalyzer.class);
 
     private static final String TRANSACTIONAL_ANNOTATION =
             "org.springframework.transaction.annotation.Transactional";
@@ -61,6 +67,8 @@ public final class CallChainAnalyzer {
                 dfs(endpoint.psiMethod(), 0, visited, result, project);
             }
 
+            LOG.info("analyze: endpoint=" + endpoint.httpMethod() + " " + endpoint.path()
+                    + " chain_size=" + result.size());
             return result;
         });
     }
@@ -104,7 +112,7 @@ public final class CallChainAnalyzer {
                 "", isTransactional, false, method));
 
         // Collect all outgoing method calls in the method body
-        List<PsiMethod> callees = collectCallees(method, project, result, depth);
+        List<PsiMethod> callees = collectCallers(method, project, result, depth);
         for (PsiMethod callee : callees) {
             dfs(callee, depth + 1, visited, result, project);
         }
@@ -119,7 +127,7 @@ public final class CallChainAnalyzer {
      * to concrete {@link PsiMethod} instances. Dynamic calls via {@code getBean()} are
      * added directly to {@code result} as dynamic nodes.
      */
-    private static List<PsiMethod> collectCallees(
+    private static List<PsiMethod> collectCallers(
             PsiMethod method,
             Project project,
             List<CallChainNode> result,
@@ -211,15 +219,15 @@ public final class CallChainAnalyzer {
         if (qualifier == null) {
             return false;
         }
-        com.intellij.psi.PsiType qualifierType = qualifier.getType();
-        if (!(qualifierType instanceof com.intellij.psi.PsiClassType classType)) {
+        PsiType qualifierType = qualifier.getType();
+        if (!(qualifierType instanceof PsiClassType classType)) {
             return false;
         }
         PsiClass resolvedClass = classType.resolve();
         if (resolvedClass == null) {
             return false;
         }
-        com.intellij.psi.JavaPsiFacade facade = com.intellij.psi.JavaPsiFacade.getInstance(project);
+        JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
         PsiClass appCtxClass = facade.findClass(APPLICATION_CONTEXT_FQN,
                 GlobalSearchScope.allScope(project));
         return appCtxClass != null && resolvedClass.isInheritor(appCtxClass, true);

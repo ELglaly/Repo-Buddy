@@ -1,6 +1,7 @@
 package com.repoinspector.analysis;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
@@ -8,6 +9,7 @@ import com.intellij.openapi.util.Computable;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiParameter;
+import com.intellij.psi.PsiType;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.repoinspector.model.RepositoryMethodInfo;
@@ -15,6 +17,7 @@ import com.repoinspector.model.RepositoryMethodInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -22,6 +25,8 @@ import java.util.stream.Collectors;
  * All PSI operations are wrapped in read actions.
  */
 public final class CallSiteAnalyzer {
+
+    private static final Logger LOG = Logger.getInstance(CallSiteAnalyzer.class);
 
     private CallSiteAnalyzer() {
         // utility class
@@ -31,21 +36,10 @@ public final class CallSiteAnalyzer {
      * Holds the results of a full analysis pass, pairing info records
      * with their corresponding PsiMethod references for navigation.
      */
-    public static final class AnalysisResult {
-        private final List<RepositoryMethodInfo> infos;
-        private final List<PsiMethod> methods;
-
-        private AnalysisResult(List<RepositoryMethodInfo> infos, List<PsiMethod> methods) {
-            this.infos = List.copyOf(infos);
-            this.methods = List.copyOf(methods);
-        }
-
-        public List<RepositoryMethodInfo> getInfos() {
-            return infos;
-        }
-
-        public List<PsiMethod> getMethods() {
-            return methods;
+    public record AnalysisResult(List<RepositoryMethodInfo> infos, List<PsiMethod> methods) {
+        public AnalysisResult {
+            infos = List.copyOf(infos);
+            methods = List.copyOf(methods);
         }
     }
 
@@ -70,13 +64,14 @@ public final class CallSiteAnalyzer {
      * @return an AnalysisResult pairing RepositoryMethodInfo records with PsiMethod references
      */
     public static AnalysisResult analyzeAll(Project project) {
-        AnalysisResult[] holder = new AnalysisResult[1];
+        AtomicReference<AnalysisResult> holder = new AtomicReference<>();
         ProgressManager.getInstance().runProcess(
-            () -> holder[0] = ApplicationManager.getApplication().runReadAction((Computable<AnalysisResult>) () -> {
+            () -> holder.set(ApplicationManager.getApplication().runReadAction((Computable<AnalysisResult>) () -> {
                 List<RepositoryMethodInfo> infos = new ArrayList<>();
                 List<PsiMethod> methods = new ArrayList<>();
 
                 List<PsiClass> repos = RepositoryFinder.findAllRepositories(project);
+                LOG.info("analyzeAll: discovered " + repos.size() + " repository class(es)");
 
                 for (PsiClass repoClass : repos) {
                     String repoName = repoClass.getName();
@@ -95,10 +90,10 @@ public final class CallSiteAnalyzer {
                 }
 
                 return new AnalysisResult(infos, methods);
-            }),
+            })),
             new EmptyProgressIndicator()
         );
-        return holder[0];
+        return holder.get();
     }
 
     /**
@@ -107,7 +102,7 @@ public final class CallSiteAnalyzer {
     public static String buildSignature(PsiMethod method) {
         String params = Arrays.stream(method.getParameterList().getParameters())
                 .map(PsiParameter::getType)
-                .map(t -> t.getPresentableText())
+                .map(PsiType::getPresentableText)
                 .collect(Collectors.joining(", "));
         return method.getName() + "(" + params + ")";
     }

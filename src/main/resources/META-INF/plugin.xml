@@ -27,16 +27,21 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
 
-        <applicationService
-                serviceImplementation="com.repoinspector.server.RepositoryCallsHttpServer"/>
-
         <codeInsight.lineMarkerProvider
                 language="JAVA"
-                implementationClass="com.repoinspector.gutter.RepoCallCountGutterProvider"/>
+                implementationClass="com.repoinspector.gutter.RepoMethodGutterProvider"/>
 
         <toolWindow id="Repo Inspector"
                     anchor="bottom"
                     factoryClass="com.repoinspector.ui.RepoInspectorToolWindowFactory"/>
+
+        <!-- Automatically injects -javaagent into Spring Boot run configurations -->
+        <postStartupActivity
+                implementation="com.repoinspector.runner.startup.AgentRunConfigPatcher"/>
+
+        <notificationGroup id="RepoBuddy Notifications"
+                           displayType="BALLOON"
+                           toolWindowId="Event Log"/>
 
     </extensions>
 

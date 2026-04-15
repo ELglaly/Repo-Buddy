@@ -4,7 +4,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBScrollPane;
-import com.repoinspector.analysis.CallChainAnalyzer;
 import com.repoinspector.analysis.CallChainCache;
 import com.repoinspector.analysis.EndpointFinder;
 import com.repoinspector.model.CallChainNode;
@@ -38,6 +37,8 @@ import java.util.List;
  * </pre>
  */
 public class CallChainPanel extends JPanel {
+
+    private static final int TEXT_EXPORT_SEPARATOR_LENGTH = 60;
 
     private final Project project;
 
@@ -156,17 +157,9 @@ public class CallChainPanel extends JPanel {
             return;
         }
 
-        // Check cache first
-        List<CallChainNode> cached = CallChainCache.getOrNull(selected, project);
-        if (cached != null) {
-            renderResult(selected, cached, true);
-            return;
-        }
-
         statusLabel.setText("Analyzing call chain...");
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<CallChainNode> nodes = CallChainAnalyzer.analyze(selected, project);
-            CallChainCache.put(selected, project, nodes);
+            List<CallChainNode> nodes = CallChainCache.getOrAnalyze(selected, project);
             SwingUtilities.invokeLater(() -> renderResult(selected, nodes, false));
         });
     }
@@ -262,7 +255,7 @@ public class CallChainPanel extends JPanel {
     }
 
     private static String buildTextExport(EndpointInfo endpoint, List<CallChainNode> nodes) {
-        String separator = "─".repeat(60);
+        String separator = "─".repeat(TEXT_EXPORT_SEPARATOR_LENGTH);
         StringBuilder sb = new StringBuilder();
 
         sb.append("API Endpoint: ").append(endpoint.httpMethod()).append(' ').append(endpoint.path())

@@ -1,10 +1,12 @@
 package com.repoinspector.analysis;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
+import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiAnnotationMemberValue;
 import com.intellij.psi.PsiArrayInitializerMemberValue;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Discovers all Spring MVC REST endpoint methods in the project by searching
@@ -26,6 +29,8 @@ import java.util.Set;
  * All methods must be called inside a read action.
  */
 public final class EndpointFinder {
+
+    private static final Logger LOG = Logger.getInstance(EndpointFinder.class);
 
     // Mapping annotation FQNs → default HTTP method label
     private static final String[][] MAPPING_ANNOTATIONS = {
@@ -49,17 +54,17 @@ public final class EndpointFinder {
      * @return list of EndpointInfo records, one per annotated method
      */
     public static List<EndpointInfo> findAllEndpoints(Project project) {
-        List<EndpointInfo>[] holder = new List[1];
+        AtomicReference<List<EndpointInfo>> holder = new AtomicReference<>();
         ProgressManager.getInstance().runProcess(
-            () -> holder[0] = ApplicationManager.getApplication().runReadAction((Computable<List<EndpointInfo>>) () -> {
+            () -> holder.set(ApplicationManager.getApplication().runReadAction((Computable<List<EndpointInfo>>) () -> {
                 Set<EndpointInfo> results = new LinkedHashSet<>();
                 GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
+                JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
 
                 for (String[] entry : MAPPING_ANNOTATIONS) {
                     String annotationFqn = entry[0];
                     String httpVerb = entry[1];
 
-                    com.intellij.psi.JavaPsiFacade facade = com.intellij.psi.JavaPsiFacade.getInstance(project);
                     PsiClass annotationClass = facade.findClass(annotationFqn, GlobalSearchScope.allScope(project));
                     if (annotationClass == null) {
                         continue;
@@ -85,11 +90,12 @@ public final class EndpointFinder {
                     });
                 }
 
+                LOG.info("findAllEndpoints: discovered " + results.size() + " endpoint(s)");
                 return new ArrayList<>(results);
-            }),
+            })),
             new EmptyProgressIndicator()
         );
-        return holder[0];
+        return holder.get();
     }
 
     /**

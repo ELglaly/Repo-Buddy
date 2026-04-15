@@ -11,6 +11,24 @@ repositories {
     mavenCentral()
 }
 
+dependencies {
+    implementation("com.google.code.gson:gson:2.10.1")
+}
+
+// ── Embed the agent JAR as a resource inside the plugin JAR ──────────────────
+// The agent JAR is stored at /agent/repoBuddy-agent.jar inside the plugin JAR.
+// AgentRunConfigPatcher extracts it to the system temp directory at runtime,
+// so it works regardless of how or where the plugin is installed.
+evaluationDependsOn(":agent")
+
+tasks.processResources {
+    dependsOn(":agent:jar")
+    from(project(":agent").tasks.named<Jar>("jar")) {
+        into("agent")
+        rename { "repoBuddy-agent.jar" }
+    }
+}
+
 // Configure Gradle IntelliJ Plugin
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
 intellij {
