@@ -2,11 +2,15 @@ package com.repoinspector.ui;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiParameter;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import com.repoinspector.analysis.CallSiteAnalyzer;
 import com.repoinspector.model.RepositoryMethodInfo;
+import com.repoinspector.runner.model.ParameterDef;
+import com.repoinspector.runner.ui.RepoRunnerPopup;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -16,6 +20,7 @@ import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -53,6 +58,7 @@ public class RepoInspectorPanel extends JPanel {
     private final JLabel           statusLabel;
     private final JTextField       searchField;
     private final JToggleButton    unusedOnlyToggle;
+    private final JButton          runButton;
 
     /** Parallel list of PSI references for double-click navigation (model-index aligned). */
     private List<PsiMethod>             methodList  = List.of();
@@ -85,6 +91,12 @@ public class RepoInspectorPanel extends JPanel {
         exportCsvButton.setToolTipText("Copy the full table to clipboard as CSV");
         exportCsvButton.addActionListener(e -> exportCsv());
 
+        // ── Run button ────────────────────────────────────────────────────────
+        runButton = UITheme.runButton();
+        runButton.setEnabled(false);
+        runButton.setToolTipText("Run the selected repository method against your running Spring Boot app");
+        runButton.addActionListener(e -> openRunnerPopupForSelected());
+
         // ── Refresh button ────────────────────────────────────────────────────
         JButton refreshButton = UITheme.button("\u21BB  Refresh");
         refreshButton.setFont(refreshButton.getFont().deriveFont(Font.BOLD, 12f));
@@ -103,6 +115,7 @@ public class RepoInspectorPanel extends JPanel {
         searchBar.add(exportCsvButton);
 
         JPanel buttonBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 2));
+        buttonBar.add(runButton);
         buttonBar.add(refreshButton);
 
         JPanel topRow = new JPanel(new BorderLayout(4, 0));
@@ -137,6 +150,12 @@ public class RepoInspectorPanel extends JPanel {
         table.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) navigateToSelectedMethod();
+            }
+        });
+
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                runButton.setEnabled(table.getSelectedRow() >= 0);
             }
         });
 
@@ -265,6 +284,42 @@ public class RepoInspectorPanel extends JPanel {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
         return value;
+    }
+
+    // =========================================================================
+    // Run — opens RepoRunnerPopup for the selected row
+    // =========================================================================
+
+    private void openRunnerPopupForSelected() {
+        int viewRow = table.getSelectedRow();
+        if (viewRow < 0) return;
+
+        int modelRow = table.convertRowIndexToModel(viewRow);
+        if (modelRow < 0 || modelRow >= methodList.size()) return;
+
+        PsiMethod method = methodList.get(modelRow);
+        if (method == null || !method.isValid()) return;
+
+        ApplicationManager.getApplication().runReadAction(() -> {
+            PsiClass cls = method.getContainingClass();
+            String classFqn   = (cls != null && cls.getQualifiedName() != null)
+                    ? cls.getQualifiedName() : "";
+            String name       = method.getName();
+            List<ParameterDef> params = extractParams(method);
+
+            SwingUtilities.invokeLater(() -> {
+                RepoRunnerPopup popup = new RepoRunnerPopup(project, classFqn, name, params);
+                popup.display(null);
+            });
+        });
+    }
+
+    private static List<ParameterDef> extractParams(PsiMethod method) {
+        List<ParameterDef> defs = new ArrayList<>();
+        for (PsiParameter param : method.getParameterList().getParameters()) {
+            defs.add(new ParameterDef(param.getName(), param.getType().getPresentableText()));
+        }
+        return defs;
     }
 
     // =========================================================================
