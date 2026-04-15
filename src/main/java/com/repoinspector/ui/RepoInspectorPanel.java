@@ -3,7 +3,6 @@ package com.repoinspector.ui;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiMethod;
-import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import com.repoinspector.analysis.CallSiteAnalyzer;
@@ -18,82 +17,94 @@ import java.awt.event.MouseEvent;
 import java.util.List;
 
 /**
- * Main panel for the "Repo Inspector" tool window.
- * Shows a sortable table of all Spring repository methods and their call counts,
- * with color-coded cells and double-click navigation to source.
+ * Main panel for the "Repository Usage" tab.
+ *
+ * <p>Shows a sortable table of all Spring Data repository methods with their
+ * call counts.  Cells in the Call Count column are colour-coded:
+ * <ul>
+ *   <li><b>Red</b>    — never called (count = 0)</li>
+ *   <li><b>Amber</b>  — called once or twice</li>
+ *   <li><b>Green</b>  — called three or more times</li>
+ * </ul>
+ * Double-clicking a row navigates to the method declaration in the editor.
  */
 public class RepoInspectorPanel extends JPanel {
 
-    private static final String[] COLUMN_NAMES = {"Repository", "Method", "Signature", "Call Count"};
-    private static final int CALL_COUNT_COLUMN = 3;
-    private static final int CALL_COUNT_WARNING_THRESHOLD = 2;
+    private static final String[] COLUMN_NAMES = {"Repository", "Method", "Signature", "Calls"};
+    private static final int COL_CALL_COUNT   = 3;
+    private static final int CALL_COUNT_HIGH  = 2;   // threshold: > this value → green
 
-    private final Project project;
+    private final Project          project;
     private final DefaultTableModel tableModel;
-    private final JBTable table;
+    private final JBTable          table;
+    private final JLabel           statusLabel;
 
-    // Parallel list of PsiMethod references for double-click navigation
+    /** Parallel list of PSI references for double-click navigation (model-index aligned). */
     private List<PsiMethod> methodList = List.of();
 
     public RepoInspectorPanel(Project project) {
         super(new BorderLayout());
         this.project = project;
 
-        // --- Toolbar (NORTH) ---
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
-        JButton refreshButton = new JButton("Refresh Analysis");
+        // ── Toolbar (NORTH) ───────────────────────────────────────────────────
+        JButton refreshButton = UITheme.button("\u21BB  Refresh Analysis");
+        refreshButton.setFont(refreshButton.getFont().deriveFont(Font.BOLD, 12f));
         refreshButton.addActionListener(e -> runAnalysis());
-        toolbar.add(refreshButton);
+
+        statusLabel = new JLabel("  Double-click a row to navigate to the method.");
+        statusLabel.setFont(statusLabel.getFont().deriveFont(11f));
+        statusLabel.setForeground(UITheme.MUTED);
+
+        JPanel toolbar = new JPanel(new BorderLayout(8, 0));
+        toolbar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        toolbar.add(refreshButton, BorderLayout.WEST);
+        toolbar.add(statusLabel,   BorderLayout.CENTER);
         add(toolbar, BorderLayout.NORTH);
 
-        // --- Table (CENTER) ---
+        // ── Table (CENTER) ────────────────────────────────────────────────────
         tableModel = new DefaultTableModel(COLUMN_NAMES, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-
-            @Override
-            public Class<?> getColumnClass(int columnIndex) {
-                // Returning Integer for the call count column enables numeric sort
-                return columnIndex == CALL_COUNT_COLUMN ? Integer.class : String.class;
+            @Override public boolean isCellEditable(int row, int col) { return false; }
+            @Override public Class<?> getColumnClass(int col) {
+                // Integer class enables numeric sort on the Calls column.
+                return col == COL_CALL_COUNT ? Integer.class : String.class;
             }
         };
 
         table = new JBTable(tableModel);
         table.setAutoCreateRowSorter(true);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        table.setRowHeight(24);
+        table.getTableHeader().setFont(
+                table.getTableHeader().getFont().deriveFont(Font.BOLD));
 
-        // Color-coded renderer for the Call Count column
-        table.getColumnModel().getColumn(CALL_COUNT_COLUMN)
+        // Colour-coded Calls column
+        table.getColumnModel().getColumn(COL_CALL_COUNT)
                 .setCellRenderer(new CallCountCellRenderer());
 
-        // Double-click to navigate to method declaration
+        // Double-click → navigate
         table.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    navigateToSelectedMethod();
-                }
+            @Override public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) navigateToSelectedMethod();
             }
         });
 
         add(new JBScrollPane(table), BorderLayout.CENTER);
     }
 
-    /**
-     * Runs the analysis on a background thread and updates the table on the EDT.
-     */
+    // =========================================================================
+    // Analysis
+    // =========================================================================
+
     private void runAnalysis() {
+        statusLabel.setText("  Analyzing\u2026");
+        statusLabel.setForeground(UITheme.ACCENT);
+
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             CallSiteAnalyzer.AnalysisResult result = CallSiteAnalyzer.analyzeAll(project);
             SwingUtilities.invokeLater(() -> updateTable(result));
         });
     }
 
-    /**
-     * Populates the table with the analysis results. Must be called on the EDT.
-     */
     private void updateTable(CallSiteAnalyzer.AnalysisResult result) {
         tableModel.setRowCount(0);
         methodList = result.methods();
@@ -103,24 +114,23 @@ public class RepoInspectorPanel extends JPanel {
                     info.repositoryName(),
                     info.methodName(),
                     info.methodSignature(),
-                    info.callCount()   // stored as Integer for numeric sort
+                    info.callCount()
             });
         }
+
+        int total = result.infos().size();
+        long unused = result.infos().stream().filter(i -> i.callCount() == 0).count();
+        statusLabel.setText("  " + total + " method" + (total == 1 ? "" : "s") + "  \u2014  "
+                + unused + " unused  \u2014  double-click to navigate");
+        statusLabel.setForeground(UITheme.MUTED);
     }
 
-    /**
-     * Navigates to the PsiMethod corresponding to the currently selected table row.
-     */
     private void navigateToSelectedMethod() {
         int viewRow = table.getSelectedRow();
-        if (viewRow < 0) {
-            return;
-        }
-        // Convert view index to model index (accounts for active sort order)
+        if (viewRow < 0) return;
+
         int modelRow = table.convertRowIndexToModel(viewRow);
-        if (modelRow < 0 || modelRow >= methodList.size()) {
-            return;
-        }
+        if (modelRow < 0 || modelRow >= methodList.size()) return;
 
         PsiMethod method = methodList.get(modelRow);
         if (method != null && method.isValid()) {
@@ -128,15 +138,11 @@ public class RepoInspectorPanel extends JPanel {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Cell renderer for color-coded Call Count column
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Call-count cell renderer — colour-coded via UITheme
+    // =========================================================================
 
-    private static class CallCountCellRenderer extends DefaultTableCellRenderer {
-
-        private static final Color COLOR_RED    = new JBColor(new Color(255, 180, 180), new Color(120, 40, 40));
-        private static final Color COLOR_YELLOW = new JBColor(new Color(255, 255, 180), new Color(100, 90, 20));
-        private static final Color COLOR_GREEN  = new JBColor(new Color(190, 255, 190), new Color(30, 90, 30));
+    private static final class CallCountCellRenderer extends DefaultTableCellRenderer {
 
         @Override
         public Component getTableCellRendererComponent(
@@ -145,14 +151,18 @@ public class RepoInspectorPanel extends JPanel {
 
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             setHorizontalAlignment(SwingConstants.CENTER);
+            setFont(getFont().deriveFont(Font.BOLD));
 
             if (!isSelected && value instanceof Integer count) {
                 if (count == 0) {
-                    setBackground(COLOR_RED);
-                } else if (count <= CALL_COUNT_WARNING_THRESHOLD) {
-                    setBackground(COLOR_YELLOW);
+                    setBackground(UITheme.COUNT_ZERO);
+                    setForeground(UITheme.COUNT_ZERO.darker().darker());
+                } else if (count <= CALL_COUNT_HIGH) {
+                    setBackground(UITheme.COUNT_LOW);
+                    setForeground(UITheme.COUNT_LOW.darker().darker());
                 } else {
-                    setBackground(COLOR_GREEN);
+                    setBackground(UITheme.COUNT_HIGH);
+                    setForeground(UITheme.COUNT_HIGH.darker().darker());
                 }
             }
 
