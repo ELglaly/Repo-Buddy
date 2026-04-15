@@ -13,11 +13,14 @@ import java.util.List;
 /**
  * Dynamically generates input fields for a repository method's parameters.
  *
- * <p>Each parameter is rendered as a two-column row:
- * <ul>
- *   <li><b>Left</b>: parameter name (bold) + a colour-coded type badge underneath</li>
- *   <li><b>Right</b>: the appropriate input widget for the type</li>
- * </ul>
+ * <p>Each parameter row has three columns:
+ * <ol>
+ *   <li>Name label (bold) + colour-coded type badge</li>
+ *   <li>Input widget (text field, checkbox, or JSON text area)</li>
+ *   <li>Per-field  🎲  button — generates a type-aware random value for that field only</li>
+ * </ol>
+ *
+ * <p>A <b>🎲 Generate All</b> button above the grid fills every field at once.
  *
  * <p>Type-to-widget mapping:
  * <ul>
@@ -30,6 +33,8 @@ import java.util.List;
  */
 class ParameterFormPanel extends JPanel {
 
+    private static final String DICE = "\uD83C\uDFB2";   // 🎲
+
     private final List<ParameterDef> params;
     private final List<JComponent>   inputs = new ArrayList<>();
 
@@ -38,7 +43,9 @@ class ParameterFormPanel extends JPanel {
         build();
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // Build
+    // =========================================================================
 
     private void build() {
         if (params.isEmpty()) {
@@ -46,7 +53,22 @@ class ParameterFormPanel extends JPanel {
             return;
         }
 
-        setBorder(BorderFactory.createTitledBorder(
+        setLayout(new BorderLayout(0, 0));
+
+        // ── Generate-All toolbar ──────────────────────────────────────────────
+        JButton generateAllButton = UITheme.button(DICE + "  Generate All");
+        generateAllButton.setFont(generateAllButton.getFont().deriveFont(Font.BOLD, 11f));
+        generateAllButton.setForeground(UITheme.ACCENT);
+        generateAllButton.setToolTipText("Fill all fields with type-aware random sample data");
+        generateAllButton.addActionListener(e -> fillAllRandom());
+
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        topBar.add(generateAllButton);
+        add(topBar, BorderLayout.NORTH);
+
+        // ── Parameter grid ────────────────────────────────────────────────────
+        JPanel grid = new JPanel(new GridBagLayout());
+        grid.setBorder(BorderFactory.createTitledBorder(
                 BorderFactory.createLineBorder(UITheme.ACCENT.darker(), 1),
                 " Parameters ",
                 TitledBorder.LEFT,
@@ -54,33 +76,41 @@ class ParameterFormPanel extends JPanel {
                 new Font(Font.SANS_SERIF, Font.BOLD, 11),
                 UITheme.ACCENT));
 
-        setLayout(new GridBagLayout());
         GridBagConstraints gbc = baseConstraints();
 
         for (int i = 0; i < params.size(); i++) {
             ParameterDef param = params.get(i);
+            final int idx = i;
 
-            // Left: name + type badge
+            // Col 0: label + type badge
             gbc.gridx = 0; gbc.gridy = i;
             gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
-            add(buildParamLabel(param), gbc);
+            grid.add(buildParamLabel(param), gbc);
 
-            // Right: input widget
+            // Col 1: input widget
             gbc.gridx = 1;
             gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0;
             JComponent input = createInput(param);
             inputs.add(input);
-            add(input instanceof JTextArea ? new JScrollPane(input) : input, gbc);
+            grid.add(input instanceof JTextArea ? scrollWrap((JTextArea) input) : input, gbc);
+
+            // Col 2: per-field 🎲 button
+            gbc.gridx = 2;
+            gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
+            JButton diceBtn = buildDiceButton(param, idx);
+            grid.add(diceBtn, gbc);
         }
 
-        // Vertical filler so form sticks to the top
+        // Vertical filler — pins the form rows to the top
         gbc.gridx = 0; gbc.gridy = params.size();
-        gbc.gridwidth = 2;
+        gbc.gridwidth = 3;
         gbc.fill = GridBagConstraints.BOTH; gbc.weighty = 1.0;
-        add(new JPanel(), gbc);
+        grid.add(new JPanel(), gbc);
+
+        add(grid, BorderLayout.CENTER);
     }
 
-    /** Centered message panel shown when the method has no parameters. */
+    /** Centered empty-state message for methods with no parameters. */
     private void buildEmptyState() {
         setLayout(new BorderLayout());
         JPanel center = new JPanel(new GridBagLayout());
@@ -96,10 +126,53 @@ class ParameterFormPanel extends JPanel {
         add(center, BorderLayout.CENTER);
     }
 
-    /**
-     * Builds the left-column label panel: bold parameter name on the first line,
-     * colour-coded type badge on the second.
-     */
+    // =========================================================================
+    // Per-field dice button
+    // =========================================================================
+
+    private JButton buildDiceButton(ParameterDef param, int idx) {
+        JButton btn = new JButton(DICE);
+        btn.setFont(btn.getFont().deriveFont(14f));
+        btn.setMargin(new Insets(2, 6, 2, 6));
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(true);
+        btn.setToolTipText("Generate random " + param.typeName() + " for \"" + param.name() + "\"");
+        btn.addActionListener(e -> fillOne(idx));
+        return btn;
+    }
+
+    // =========================================================================
+    // Random fill
+    // =========================================================================
+
+    /** Fills every input with a random sample value. */
+    private void fillAllRandom() {
+        for (int i = 0; i < params.size(); i++) {
+            fillOne(i);
+        }
+    }
+
+    /** Fills the input at position {@code idx} with one random sample value. */
+    private void fillOne(int idx) {
+        String value = RandomDataGenerator.generate(params.get(idx));
+        applyValue(inputs.get(idx), value);
+    }
+
+    private static void applyValue(JComponent input, String value) {
+        if (input instanceof JCheckBox cb) {
+            cb.setSelected(Boolean.parseBoolean(value));
+        } else if (input instanceof JTextArea ta) {
+            ta.setText(value);
+            ta.setCaretPosition(0);
+        } else if (input instanceof JTextField tf) {
+            tf.setText(value);
+        }
+    }
+
+    // =========================================================================
+    // Label + badge
+    // =========================================================================
+
     private static JPanel buildParamLabel(ParameterDef param) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -140,6 +213,10 @@ class ParameterFormPanel extends JPanel {
         };
     }
 
+    // =========================================================================
+    // Input widget factory
+    // =========================================================================
+
     private JComponent createInput(ParameterDef param) {
         return switch (param.fieldType()) {
             case BOOLEAN -> {
@@ -168,6 +245,14 @@ class ParameterFormPanel extends JPanel {
         };
     }
 
+    private static JScrollPane scrollWrap(JTextArea ta) {
+        return new JScrollPane(ta);
+    }
+
+    // =========================================================================
+    // Value collection
+    // =========================================================================
+
     /**
      * Collects current values from all input widgets in declaration order.
      *
@@ -188,9 +273,13 @@ class ParameterFormPanel extends JPanel {
         return "";
     }
 
+    // =========================================================================
+    // Layout helper
+    // =========================================================================
+
     private static GridBagConstraints baseConstraints() {
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(8, 10, 8, 10);
+        gbc.insets = new Insets(8, 10, 8, 6);
         gbc.anchor = GridBagConstraints.NORTHWEST;
         return gbc;
     }
