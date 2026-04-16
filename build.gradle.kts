@@ -6,7 +6,6 @@ plugins {
 
 group = "com.elglaly"
 version = "3.0-SNAPSHOT"
-
 repositories {
     mavenCentral()
     intellijPlatform {
