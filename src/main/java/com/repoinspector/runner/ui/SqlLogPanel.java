@@ -4,26 +4,32 @@ import com.repoinspector.runner.model.SqlLogEntry;
 import com.repoinspector.ui.UITheme;
 
 import javax.swing.*;
+import javax.swing.text.*;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Displays SQL statements captured by the Hibernate agent during method execution.
  *
- * <p>Uses a terminal-style dark background to visually distinguish SQL content
- * from other panels.  The header bar shows a live count badge.
+ * <p>Uses a terminal-style dark background with syntax highlighting:
+ * <ul>
+ *   <li>Comment lines ({@code -- [N] timestamp}) — dim grey</li>
+ *   <li>SQL keywords (SELECT, FROM, WHERE, …) — cornflower blue, bold</li>
+ *   <li>Regular SQL tokens — green ({@link UITheme#SQL_FG})</li>
+ * </ul>
  *
  * <p>Layout:
  * <pre>
  *  ┌─ NORTH (header bar) ──────────────────────────────────────────────┐
  *  │  ⛁  3 SQL statements captured                       ⎘ Copy SQL │
- *  ├─ CENTER (scrollable text area) ───────────────────────────────────┤
+ *  ├─ CENTER (scrollable JTextPane) ───────────────────────────────────┤
  *  │  -- [1]  14:32:01.123                                             │
- *  │  SELECT * FROM users WHERE id = ?                                 │
+ *  │  SELECT u.id FROM users u WHERE u.id = ?                         │
  *  └───────────────────────────────────────────────────────────────────┘
  * </pre>
  */
@@ -35,8 +41,25 @@ class SqlLogPanel extends JPanel {
     private static final Color HEADER_BG     = UITheme.SQL_BG.darker();
     private static final Color SEPARATOR_CLR = new Color(40, 55, 40);
 
-    private final JTextArea textArea;
+    /** SQL keywords rendered in the keyword colour. */
+    private static final Set<String> SQL_KEYWORDS = Set.of(
+            "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL",
+            "ON", "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE", "BETWEEN", "EXISTS",
+            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP",
+            "TABLE", "INDEX", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
+            "DISTINCT", "AS", "CASE", "WHEN", "THEN", "ELSE", "END",
+            "UNION", "ALL", "EXCEPT", "INTERSECT", "WITH", "RETURNING",
+            "ASC", "DESC", "NULLS", "FIRST", "LAST",
+            "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "CAST"
+    );
+
+    private final JTextPane textPane;
     private final JLabel    countLabel;
+
+    // Reusable named styles — initialised once in the constructor.
+    private final Style commentStyle;
+    private final Style keywordStyle;
+    private final Style regularStyle;
 
     SqlLogPanel() {
         setLayout(new BorderLayout(0, 0));
@@ -51,19 +74,50 @@ class SqlLogPanel extends JPanel {
         JPanel toolbar = UITheme.headerToolbar(HEADER_BG, countLabel, copyButton, SEPARATOR_CLR);
         add(toolbar, BorderLayout.NORTH);
 
-        // ── Text area ─────────────────────────────────────────────────────────
-        textArea = UITheme.codeArea(UITheme.SQL_BG, UITheme.SQL_FG);
-        copyButton.addActionListener(e -> copyToClipboard(textArea.getText()));
+        // ── Text pane with syntax-highlighting styles ──────────────────────────
+        textPane = new JTextPane();
+        textPane.setEditable(false);
+        textPane.setBackground(UITheme.SQL_BG);
+        textPane.setCaretColor(UITheme.SQL_FG);
+        textPane.setFont(UITheme.MONO_SM);
 
-        add(UITheme.darkScrollPane(textArea, UITheme.SQL_BG), BorderLayout.CENTER);
+        StyleContext sc = StyleContext.getDefaultStyleContext();
+        Style base = sc.getStyle(StyleContext.DEFAULT_STYLE);
+
+        regularStyle = textPane.addStyle("regular", base);
+        StyleConstants.setForeground(regularStyle, UITheme.SQL_FG);
+        StyleConstants.setFontFamily(regularStyle, Font.MONOSPACED);
+        StyleConstants.setFontSize(regularStyle,   12);
+
+        commentStyle = textPane.addStyle("comment", base);
+        StyleConstants.setForeground(commentStyle, UITheme.SQL_DIM);
+        StyleConstants.setFontFamily(commentStyle, Font.MONOSPACED);
+        StyleConstants.setFontSize(commentStyle,   12);
+
+        keywordStyle = textPane.addStyle("keyword", base);
+        StyleConstants.setForeground(keywordStyle, UITheme.SQL_KEYWORD);
+        StyleConstants.setFontFamily(keywordStyle, Font.MONOSPACED);
+        StyleConstants.setFontSize(keywordStyle,   12);
+        StyleConstants.setBold(keywordStyle,       true);
+
+        JScrollPane sp = new JScrollPane(textPane);
+        sp.getViewport().setBackground(UITheme.SQL_BG);
+        sp.setBorder(BorderFactory.createEmptyBorder());
+        add(sp, BorderLayout.CENTER);
+
+        copyButton.addActionListener(e -> copyToClipboard(textPane.getText()));
     }
+
+    // =========================================================================
+    // Public API
+    // =========================================================================
 
     /** Renders the captured SQL log entries.  Clears previous content first. */
     void setSqlLogs(List<SqlLogEntry> logs) {
         if (logs.isEmpty()) {
             countLabel.setText("\u26C1  No SQL captured  (Hibernate agent may not be active)");
             countLabel.setForeground(UITheme.SQL_DIM);
-            textArea.setText("");
+            clearDocument();
             return;
         }
 
@@ -71,27 +125,95 @@ class SqlLogPanel extends JPanel {
         countLabel.setText("\u26C1  " + logs.size() + " SQL " + plural + " captured");
         countLabel.setForeground(UITheme.SQL_FG);
 
-        StringBuilder sb = new StringBuilder();
+        StyledDocument doc = textPane.getStyledDocument();
+        clearDocument();
+
         for (int i = 0; i < logs.size(); i++) {
             SqlLogEntry entry = logs.get(i);
-            sb.append("-- [").append(i + 1).append("]  ")
-              .append(TIME_FMT.format(Instant.ofEpochMilli(entry.capturedAt())))
-              .append('\n')
-              .append(entry.sql())
-              .append("\n\n");
+            appendComment(doc, "-- [" + (i + 1) + "]  "
+                    + TIME_FMT.format(Instant.ofEpochMilli(entry.capturedAt())) + "\n");
+            appendHighlightedSql(doc, entry.sql());
+            appendRegular(doc, "\n\n");
         }
 
-        textArea.setText(sb.toString());
-        textArea.setCaretPosition(0);
+        textPane.setCaretPosition(0);
     }
 
     void clear() {
         countLabel.setText("\u26C1  No queries captured");
         countLabel.setForeground(UITheme.SQL_DIM);
-        textArea.setText("");
+        clearDocument();
     }
 
-    private void copyToClipboard(String text) {
+    // =========================================================================
+    // Syntax highlighting helpers
+    // =========================================================================
+
+    /**
+     * Appends a single SQL statement with keyword highlighting.
+     *
+     * <p>Strategy: split the line into whitespace-delimited tokens.  Each token
+     * that matches a SQL keyword is rendered bold-blue; all others are plain green.
+     * Whitespace between tokens is preserved as-is.
+     */
+    private void appendHighlightedSql(StyledDocument doc, String sql) {
+        if (sql == null) return;
+
+        // Walk through the SQL character-by-character collecting tokens and spaces.
+        int start = 0;
+        int len   = sql.length();
+
+        while (start < len) {
+            // Collect leading whitespace
+            int wsEnd = start;
+            while (wsEnd < len && Character.isWhitespace(sql.charAt(wsEnd))) wsEnd++;
+            if (wsEnd > start) appendRegular(doc, sql.substring(start, wsEnd));
+            start = wsEnd;
+            if (start >= len) break;
+
+            // Collect next token (non-whitespace run)
+            int tokEnd = start;
+            while (tokEnd < len && !Character.isWhitespace(sql.charAt(tokEnd))) tokEnd++;
+            String token = sql.substring(start, tokEnd);
+
+            // Strip trailing punctuation for keyword check (e.g. "WHERE," → "WHERE")
+            String bare = token.replaceAll("[^A-Za-z_]", "");
+            if (!bare.isEmpty() && SQL_KEYWORDS.contains(bare.toUpperCase())) {
+                appendStyled(doc, token, keywordStyle);
+            } else {
+                appendRegular(doc, token);
+            }
+
+            start = tokEnd;
+        }
+    }
+
+    private void appendComment(StyledDocument doc, String text) {
+        appendStyled(doc, text, commentStyle);
+    }
+
+    private void appendRegular(StyledDocument doc, String text) {
+        appendStyled(doc, text, regularStyle);
+    }
+
+    private static void appendStyled(StyledDocument doc, String text, Style style) {
+        try {
+            doc.insertString(doc.getLength(), text, style);
+        } catch (BadLocationException ignored) {
+            // Cannot happen — we always insert at the end.
+        }
+    }
+
+    private void clearDocument() {
+        StyledDocument doc = textPane.getStyledDocument();
+        try {
+            doc.remove(0, doc.getLength());
+        } catch (BadLocationException ignored) {}
+    }
+
+    // =========================================================================
+
+    private static void copyToClipboard(String text) {
         Toolkit.getDefaultToolkit()
                 .getSystemClipboard()
                 .setContents(new StringSelection(text), null);

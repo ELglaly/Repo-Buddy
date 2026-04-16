@@ -2,6 +2,7 @@ package com.repoinspector.runner.ui;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.WindowManager;
 import com.repoinspector.runner.model.ExecutionRequest;
 import com.repoinspector.runner.model.ExecutionResult;
@@ -66,11 +67,18 @@ public class RepoRunnerPopup extends JDialog {
     private final JProgressBar progressBar;
     private final JButton      runButton;
 
+    private static Window resolveParentWindow(Project project) {
+        IdeFrame ideFrame = WindowManager.getInstance().getIdeFrame(project);
+        if (ideFrame == null) return null;
+        JComponent comp = ideFrame.getComponent();
+        return comp != null ? SwingUtilities.getWindowAncestor(comp) : null;
+    }
+
     public RepoRunnerPopup(Project project, String repositoryClass,
                            String methodName, List<ParameterDef> params) {
-        super(WindowManager.getInstance().getFrame(project),
+        super(resolveParentWindow(project),
                 "Repository Runner  \u2014  " + simpleName(repositoryClass) + "." + methodName + "()",
-                false);
+                Dialog.ModalityType.MODELESS);
         this.project         = project;
         this.repositoryClass = repositoryClass;
         this.methodName      = methodName;
@@ -147,13 +155,42 @@ public class RepoRunnerPopup extends JDialog {
         setContentPane(root);
     }
 
-    /** Centers the popup on screen and makes it visible. */
+    /**
+     * Makes the popup visible.
+     *
+     * <p>If {@code anchor} is non-null (screen coordinates from a gutter icon click),
+     * the popup is placed just to the right of the click point, pushed back onto the
+     * screen if it would overflow.  If {@code anchor} is null (e.g. opened from the
+     * tool-window Run button), the popup is centred on the screen.
+     */
     public void display(Point anchor) {
-        setLocationRelativeTo(null);
+        if (anchor != null) {
+            positionNearAnchor(anchor);
+        } else {
+            setLocationRelativeTo(null);
+        }
         setVisible(true);
         toFront();
+        // Bind Escape → close so the developer can dismiss with one keystroke.
+        getRootPane().registerKeyboardAction(
+                e -> dispose(),
+                javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
         // Check agent connectivity in the background so the popup opens instantly.
         ApplicationManager.getApplication().executeOnPooledThread(this::refreshAgentStatus);
+    }
+
+    /**
+     * Positions the dialog to the right of {@code anchor}, clamped so it stays
+     * fully within the default screen bounds.
+     */
+    private void positionNearAnchor(Point anchor) {
+        java.awt.Dimension screen = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
+        int x = anchor.x + 16;
+        int y = anchor.y - POPUP_HEIGHT / 4;
+        x = Math.max(0, Math.min(x, screen.width  - POPUP_WIDTH));
+        y = Math.max(0, Math.min(y, screen.height - POPUP_HEIGHT));
+        setLocation(x, y);
     }
 
     // =========================================================================
@@ -167,8 +204,10 @@ public class RepoRunnerPopup extends JDialog {
         sqlPanel.clear();
         resultPanel.clear();
         errorPanel.clear();
+        resetTabTitles();
         runButton.setEnabled(false);
         progressBar.setIndeterminate(true);
+        progressBar.setString("Executing " + methodName + "()\u2026");
         progressBar.setVisible(true);
         tabs.setSelectedIndex(TAB_PARAMETERS);
 
@@ -294,6 +333,17 @@ public class RepoRunnerPopup extends JDialog {
         String title = tabs.getTitleAt(index);
         if (!title.startsWith("<html>")) {
             tabs.setTitleAt(index, "<html><b>" + title + "</b></html>");
+        }
+    }
+
+    /** Strips bold HTML wrappers from all tab titles (called before each new run). */
+    private void resetTabTitles() {
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            String title = tabs.getTitleAt(i);
+            if (title.startsWith("<html><b>") && title.endsWith("</b></html>")) {
+                tabs.setTitleAt(i, title.substring("<html><b>".length(),
+                        title.length() - "</b></html>".length()));
+            }
         }
     }
 

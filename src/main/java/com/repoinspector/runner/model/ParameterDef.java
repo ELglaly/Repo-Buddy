@@ -14,12 +14,13 @@ public record ParameterDef(String name, String typeName) {
     /** Maps the PSI type name to the appropriate UI input category. */
     public FieldType fieldType() {
         return switch (typeName) {
-            case "boolean", "Boolean"                          -> FieldType.BOOLEAN;
+            case "boolean", "Boolean"                                    -> FieldType.BOOLEAN;
             case "int", "Integer", "long", "Long",
-                 "short", "Short", "byte", "Byte"             -> FieldType.NUMBER;
-            case "double", "Double", "float", "Float"         -> FieldType.DECIMAL;
-            case "String"                                      -> FieldType.TEXT;
-            default                                            -> FieldType.JSON;
+                 "short", "Short", "byte", "Byte"                       -> FieldType.NUMBER;
+            case "double", "Double", "float", "Float", "BigDecimal"     -> FieldType.DECIMAL;
+            case "String", "UUID", "LocalDate", "LocalDateTime",
+                 "ZonedDateTime", "OffsetDateTime", "Instant"           -> FieldType.TEXT;
+            default                                                      -> FieldType.JSON;
         };
     }
 }

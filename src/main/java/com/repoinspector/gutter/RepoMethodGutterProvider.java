@@ -10,21 +10,31 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiIdentifier;
 import com.intellij.psi.PsiMethod;
-import com.intellij.psi.PsiParameter;
 import com.repoinspector.analysis.RepositoryFinder;
 import com.repoinspector.runner.model.ParameterDef;
+import com.repoinspector.runner.service.PsiParamExtractor;
 import com.repoinspector.runner.ui.RepoRunnerPopup;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
 /**
- * Provides a "Run ▶" gutter icon next to every method declared in a Spring
- * repository interface (annotation-based or Spring Data hierarchy-based).
+ * Provides a gutter icon next to every method declared in a Spring repository
+ * interface (annotation-based or Spring Data hierarchy-based).
+ *
+ * <p>The icon is chosen by the inferred operation type of the method:
+ * <ul>
+ *   <li>{@link AllIcons.Actions#Find} (magnifier) — read-type methods:
+ *       {@code find*}, {@code get*}, {@code count*}, {@code exists*},
+ *       {@code read*}, {@code search*}, {@code query*}, {@code fetch*}</li>
+ *   <li>{@link AllIcons.Actions#Edit} (pencil) — write-type methods:
+ *       {@code save*}, {@code delete*}, {@code update*}, {@code create*},
+ *       {@code insert*}, {@code persist*}, {@code remove*}</li>
+ *   <li>{@link AllIcons.Actions#Execute} (play) — all other / unknown</li>
+ * </ul>
  *
  * <p>Clicking the icon opens {@link RepoRunnerPopup}, which lets the developer
  * enter parameter values and execute the method against the live application.
@@ -65,12 +75,13 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
             Project project = element.getProject();
             if (!RepositoryFinder.isRepository(containingClass, project)) continue;
 
-            String tooltip = "RepoBuddy: run " + method.getName() + "() on the live app";
+            Icon icon = iconForMethod(method.getName());
+            String tooltip = buildTooltip(containingClass.getName(), method);
 
             LineMarkerInfo<PsiElement> marker = new LineMarkerInfo<>(
                     element,
                     element.getTextRange(),
-                    AllIcons.Actions.Execute,
+                    icon,
                     e -> tooltip,
                     (mouseEvent, el) -> openRunnerPopup(mouseEvent.getLocationOnScreen(), el, project),
                     GutterIconRenderer.Alignment.LEFT,
@@ -79,6 +90,48 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
 
             result.add(marker);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Icon selection
+    // -------------------------------------------------------------------------
+
+    private static final String[] READ_PREFIXES  =
+            { "find", "get", "count", "exists", "read", "search", "query", "fetch", "load", "list" };
+    private static final String[] WRITE_PREFIXES =
+            { "save", "saveAll", "delete", "deleteAll", "deleteBy", "update",
+              "create", "insert", "persist", "remove", "flush", "merge" };
+
+    /**
+     * Returns the gutter icon that best represents the operation type inferred
+     * from the method name prefix.
+     */
+    static Icon iconForMethod(String methodName) {
+        String lower = methodName.toLowerCase();
+        for (String prefix : READ_PREFIXES) {
+            if (lower.startsWith(prefix)) return AllIcons.Actions.Find;
+        }
+        for (String prefix : WRITE_PREFIXES) {
+            if (lower.startsWith(prefix)) return AllIcons.Actions.Edit;
+        }
+        return AllIcons.Actions.Execute;
+    }
+
+    // -------------------------------------------------------------------------
+    // Tooltip
+    // -------------------------------------------------------------------------
+
+    /**
+     * Builds a human-readable tooltip with the full repository class name,
+     * method signature, and parameter list.
+     */
+    private static String buildTooltip(String className, PsiMethod method) {
+        String paramSummary = PsiParamExtractor.summary(method);
+        return "RepoBuddy \u25B6 "
+                + className + "."
+                + method.getName() + "("
+                + paramSummary + ")"
+                + "  \u2014 click to run against the live app";
     }
 
     // -------------------------------------------------------------------------
@@ -98,23 +151,15 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
             PsiMethod method = (PsiMethod) element.getParent();
             PsiClass cls = method.getContainingClass();
 
-            String classFqn  = cls != null && cls.getQualifiedName() != null
+            String classFqn   = (cls != null && cls.getQualifiedName() != null)
                     ? cls.getQualifiedName() : "";
             String methodName = method.getName();
-            List<ParameterDef> params = extractParams(method);
+            List<ParameterDef> params = PsiParamExtractor.extract(method);
 
-            SwingUtilities.invokeLater(() -> {
+            javax.swing.SwingUtilities.invokeLater(() -> {
                 RepoRunnerPopup popup = new RepoRunnerPopup(project, classFqn, methodName, params);
                 popup.display(screenPoint);
             });
         });
-    }
-
-    private static List<ParameterDef> extractParams(PsiMethod method) {
-        List<ParameterDef> defs = new ArrayList<>();
-        for (PsiParameter param : method.getParameterList().getParameters()) {
-            defs.add(new ParameterDef(param.getName(), param.getType().getPresentableText()));
-        }
-        return defs;
     }
 }

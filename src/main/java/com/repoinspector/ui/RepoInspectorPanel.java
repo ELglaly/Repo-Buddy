@@ -4,12 +4,12 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
-import com.intellij.psi.PsiParameter;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import com.repoinspector.analysis.CallSiteAnalyzer;
 import com.repoinspector.model.RepositoryMethodInfo;
 import com.repoinspector.runner.model.ParameterDef;
+import com.repoinspector.runner.service.PsiParamExtractor;
 import com.repoinspector.runner.ui.RepoRunnerPopup;
 
 import javax.swing.*;
@@ -20,7 +20,6 @@ import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -302,24 +301,16 @@ public class RepoInspectorPanel extends JPanel {
 
         ApplicationManager.getApplication().runReadAction(() -> {
             PsiClass cls = method.getContainingClass();
-            String classFqn   = (cls != null && cls.getQualifiedName() != null)
+            String classFqn    = (cls != null && cls.getQualifiedName() != null)
                     ? cls.getQualifiedName() : "";
-            String name       = method.getName();
-            List<ParameterDef> params = extractParams(method);
+            String name        = method.getName();
+            List<ParameterDef> params = PsiParamExtractor.extract(method);
 
             SwingUtilities.invokeLater(() -> {
                 RepoRunnerPopup popup = new RepoRunnerPopup(project, classFqn, name, params);
                 popup.display(null);
             });
         });
-    }
-
-    private static List<ParameterDef> extractParams(PsiMethod method) {
-        List<ParameterDef> defs = new ArrayList<>();
-        for (PsiParameter param : method.getParameterList().getParameters()) {
-            defs.add(new ParameterDef(param.getName(), param.getType().getPresentableText()));
-        }
-        return defs;
     }
 
     // =========================================================================

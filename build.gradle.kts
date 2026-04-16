@@ -1,18 +1,17 @@
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "1.9.25"
-    id("org.jetbrains.intellij") version "1.17.4"
+    id("org.jetbrains.intellij.platform") version "2.14.0"
 }
 
-group = "org.example"
+group = "com.elglaly"
 version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
-}
-
-dependencies {
-    implementation("com.google.code.gson:gson:2.10.1")
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
 // ── Embed the agent JAR as a resource inside the plugin JAR ──────────────────
@@ -29,13 +28,13 @@ tasks.processResources {
     }
 }
 
-// Configure Gradle IntelliJ Plugin
-// Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
-intellij {
-    version.set("2024.1")
-    type.set("IC") // Target IDE Platform
+dependencies {
+    implementation("com.google.code.gson:gson:2.10.1")
 
-    plugins.set(listOf("java"))
+    intellijPlatform {
+        create("IC", "2025.1")
+        bundledPlugin("com.intellij.java")
+    }
 }
 
 tasks {
@@ -46,12 +45,12 @@ tasks {
         options.encoding = "UTF-8"
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "17"
+        compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 
     patchPluginXml {
         sinceBuild.set("241")
-        untilBuild.set("251.*")
+        untilBuild.set("253.*")
     }
 
     signPlugin {

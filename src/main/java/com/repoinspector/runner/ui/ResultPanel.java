@@ -1,5 +1,9 @@
 package com.repoinspector.runner.ui;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import com.repoinspector.ui.UITheme;
 
 import javax.swing.*;
@@ -29,6 +33,7 @@ class ResultPanel extends JPanel {
 
     private static final Color HEADER_BG     = UITheme.RESULT_BG.darker();
     private static final Color SEPARATOR_CLR = new Color(40, 45, 75);
+    private static final Gson  PRETTY_GSON   = new GsonBuilder().setPrettyPrinting().create();
 
     private final JTextArea textArea;
     private final JLabel    execTimeLabel;
@@ -54,15 +59,49 @@ class ResultPanel extends JPanel {
     }
 
     /**
-     * Displays the JSON result.  Execution time is shown in the header with a
-     * colour that reflects query speed (green / amber / red).
+     * Displays the JSON result with pretty-printing and an item count for arrays.
+     * Execution time is shown in the header colour-coded by speed (green/amber/red).
      */
     void setResult(String json, long execTimeMs) {
-        execTimeLabel.setText("{ } Result  \u2014  \u23F1 " + execTimeMs + " ms");
+        String prettyJson = prettyPrint(json);
+        String countNote  = itemCountNote(json);
+
+        execTimeLabel.setText("{ } Result  \u2014  \u23F1 " + execTimeMs + " ms" + countNote);
         execTimeLabel.setForeground(UITheme.execTimeColor(execTimeMs));
 
-        textArea.setText(json != null ? json : "null");
+        textArea.setText(prettyJson);
         textArea.setCaretPosition(0);
+    }
+
+    // -------------------------------------------------------------------------
+
+    /** Re-formats a JSON string with 2-space indentation.  Returns the original on failure. */
+    private static String prettyPrint(String json) {
+        if (json == null) return "null";
+        try {
+            JsonElement element = JsonParser.parseString(json);
+            return PRETTY_GSON.toJson(element);
+        } catch (Exception ignored) {
+            return json;
+        }
+    }
+
+    /**
+     * Returns an empty string for non-array JSON, or {@code "  [N items]"} for arrays
+     * so the developer sees the count without scrolling.
+     */
+    private static String itemCountNote(String json) {
+        if (json == null) return "";
+        try {
+            JsonElement element = JsonParser.parseString(json);
+            if (element.isJsonArray()) {
+                int size = element.getAsJsonArray().size();
+                return "  \u2014  " + size + (size == 1 ? " item" : " items");
+            }
+            return "";
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     void clear() {
