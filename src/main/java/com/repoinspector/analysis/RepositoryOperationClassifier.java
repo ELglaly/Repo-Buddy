@@ -4,6 +4,7 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiClassType;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiType;
+import com.repoinspector.constants.SpringAnnotations;
 import com.repoinspector.model.OperationType;
 
 /**
@@ -12,24 +13,15 @@ import com.repoinspector.model.OperationType;
  */
 public final class RepositoryOperationClassifier {
 
-    private static final String MODIFYING_ANNOTATION = "org.springframework.data.jpa.repository.Modifying";
-    private static final String TRANSACTIONAL_ANNOTATION = "org.springframework.transaction.annotation.Transactional";
+    private static final String   MODIFYING_ANNOTATION    = SpringAnnotations.MODIFYING;
+    private static final String   TRANSACTIONAL_ANNOTATION = SpringAnnotations.TRANSACTIONAL;
+    private static final String[] SPRING_DATA_REPO_FQNS    = SpringAnnotations.SPRING_DATA_REPO_FQNS;
 
     private static final String[] WRITE_PREFIXES = {
             "save", "delete", "update", "insert", "remove", "persist", "flush", "create", "merge"
     };
-
     private static final String[] READ_PREFIXES = {
             "find", "get", "count", "exists", "load", "fetch", "read", "query", "list", "search"
-    };
-
-    // Spring Data repository FQNs whose first generic argument is the entity type
-    private static final String[] SPRING_DATA_REPO_FQNS = {
-            "org.springframework.data.jpa.repository.JpaRepository",
-            "org.springframework.data.repository.CrudRepository",
-            "org.springframework.data.repository.PagingAndSortingRepository",
-            "org.springframework.data.repository.Repository",
-            "org.springframework.data.mongodb.repository.MongoRepository"
     };
 
     private RepositoryOperationClassifier() {

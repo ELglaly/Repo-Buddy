@@ -1,6 +1,7 @@
-package com.repoinspector.analysis;
+package com.repoinspector.analysis.impl;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -15,8 +16,12 @@ import com.intellij.psi.PsiLiteralExpression;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.AnnotatedElementsSearch;
+import com.repoinspector.analysis.api.EndpointAnalysisService;
 import com.repoinspector.constants.SpringAnnotations;
 import com.repoinspector.model.EndpointInfo;
+import com.repoinspector.runner.service.api.ParameterExtractionService;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -24,63 +29,52 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Discovers all Spring MVC REST endpoint methods in the project by searching
- * for the standard HTTP mapping annotations.
- * All methods must be called inside a read action.
- */
-public final class EndpointFinder {
+/** Project-level service for discovering Spring MVC REST endpoint methods. */
+@Service(Service.Level.PROJECT)
+public final class DefaultEndpointAnalysisService implements EndpointAnalysisService {
 
-    private static final Logger LOG = Logger.getInstance(EndpointFinder.class);
+    private static final Logger LOG = Logger.getInstance(DefaultEndpointAnalysisService.class);
 
-    // Mapping annotation FQNs → default HTTP method label
-    private static final String[][] MAPPING_ANNOTATIONS = SpringAnnotations.HTTP_MAPPING_ANNOTATIONS;
+    private final Project project;
 
-    private EndpointFinder() {
-        // utility class
+    public DefaultEndpointAnalysisService(@NotNull Project project) {
+        this.project = project;
     }
 
-    /**
-     * Finds all API endpoint methods in the project.
-     * Safe to call from a background thread (wraps PSI access in a read action).
-     *
-     * @param project the current project
-     * @return list of EndpointInfo records, one per annotated method
-     */
-    public static List<EndpointInfo> findAllEndpoints(Project project) {
+    @Override
+    public List<EndpointInfo> findAllEndpoints() {
         AtomicReference<List<EndpointInfo>> holder = new AtomicReference<>();
         ProgressManager.getInstance().runProcess(
             () -> holder.set(ApplicationManager.getApplication().runReadAction((Computable<List<EndpointInfo>>) () -> {
-                Set<EndpointInfo> results = new LinkedHashSet<>();
-                GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
-                JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
+                ParameterExtractionService paramService =
+                        ApplicationManager.getApplication().getService(ParameterExtractionService.class);
 
-                for (String[] entry : MAPPING_ANNOTATIONS) {
+                Set<EndpointInfo> results     = new LinkedHashSet<>();
+                GlobalSearchScope projectScope = GlobalSearchScope.projectScope(project);
+                JavaPsiFacade     facade       = JavaPsiFacade.getInstance(project);
+
+                for (String[] entry : SpringAnnotations.HTTP_MAPPING_ANNOTATIONS) {
                     String annotationFqn = entry[0];
-                    String httpVerb = entry[1];
+                    String httpVerb      = entry[1];
 
                     PsiClass annotationClass = facade.findClass(annotationFqn, GlobalSearchScope.allScope(project));
-                    if (annotationClass == null) {
-                        continue;
-                    }
+                    if (annotationClass == null) continue;
 
                     AnnotatedElementsSearch.searchPsiMethods(annotationClass, projectScope).forEach(method -> {
                         PsiClass containingClass = method.getContainingClass();
-                        if (containingClass == null) {
-                            return true; // continue
-                        }
+                        if (containingClass == null) return true;
+
                         String controllerName = containingClass.getName() != null
                                 ? containingClass.getName() : "Unknown";
 
-                        PsiAnnotation annotation = method.getAnnotation(annotationFqn);
-                        String path = extractPath(annotation);
-                        String resolvedVerb = "REQUEST".equals(httpVerb)
+                        PsiAnnotation annotation   = method.getAnnotation(annotationFqn);
+                        String        path         = extractPath(annotation);
+                        String        resolvedVerb = "REQUEST".equals(httpVerb)
                                 ? extractRequestMethod(annotation) : httpVerb;
-
-                        String signature = CallSiteAnalyzer.buildSignature(method);
+                        String        signature    = paramService.buildSignature(method);
 
                         results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature, method));
-                        return true; // continue forEach
+                        return true;
                     });
                 }
 
@@ -92,51 +86,37 @@ public final class EndpointFinder {
         return holder.get();
     }
 
-    /**
-     * Extracts the path value from a mapping annotation.
-     * Handles both {@code @GetMapping("/path")} and {@code @GetMapping(value = "/path")}.
-     */
-    private static String extractPath(PsiAnnotation annotation) {
-        if (annotation == null) {
-            return "/";
+    @Override
+    public boolean isEndpointMethod(PsiMethod method) {
+        for (String fqn : SpringAnnotations.HTTP_MAPPING_FQNS) {
+            if (method.hasAnnotation(fqn)) return true;
         }
+        return false;
+    }
 
-        // Try "value" attribute first, then "path"
+    // ── private helpers ────────────────────────────────────────────────────────
+
+    private static String extractPath(@Nullable PsiAnnotation annotation) {
+        if (annotation == null) return "/";
         for (String attr : new String[]{"value", "path"}) {
             PsiAnnotationMemberValue memberValue = annotation.findAttributeValue(attr);
-            if (memberValue == null) {
-                continue;
-            }
+            if (memberValue == null) continue;
             String extracted = extractStringValue(memberValue);
-            if (extracted != null && !extracted.isEmpty()) {
-                return extracted;
-            }
+            if (extracted != null && !extracted.isEmpty()) return extracted;
         }
-
         return "/";
     }
 
-    /**
-     * Extracts the HTTP method from a @RequestMapping annotation's {@code method} attribute.
-     */
-    private static String extractRequestMethod(PsiAnnotation annotation) {
-        if (annotation == null) {
-            return "REQUEST";
-        }
+    private static String extractRequestMethod(@Nullable PsiAnnotation annotation) {
+        if (annotation == null) return "REQUEST";
         PsiAnnotationMemberValue methodValue = annotation.findAttributeValue("method");
-        if (methodValue == null) {
-            return "REQUEST";
-        }
-        // RequestMethod.GET → last segment after '.'
+        if (methodValue == null) return "REQUEST";
         String text = methodValue.getText();
         int dot = text.lastIndexOf('.');
         return dot >= 0 ? text.substring(dot + 1) : text;
     }
 
-    /**
-     * Extracts a string literal from an annotation attribute value,
-     * handling both single values and array initializers (first element only).
-     */
+    @Nullable
     private static String extractStringValue(PsiAnnotationMemberValue value) {
         if (value instanceof PsiLiteralExpression literal) {
             Object v = literal.getValue();
@@ -144,9 +124,7 @@ public final class EndpointFinder {
         }
         if (value instanceof PsiArrayInitializerMemberValue array) {
             PsiAnnotationMemberValue[] initializers = array.getInitializers();
-            if (initializers.length > 0) {
-                return extractStringValue(initializers[0]);
-            }
+            if (initializers.length > 0) return extractStringValue(initializers[0]);
         }
         return null;
     }

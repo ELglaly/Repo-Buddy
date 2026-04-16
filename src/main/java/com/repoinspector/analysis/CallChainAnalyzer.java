@@ -15,6 +15,7 @@ import com.intellij.psi.PsiReferenceExpression;
 import com.intellij.psi.PsiType;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
+import com.repoinspector.constants.SpringAnnotations;
 import com.repoinspector.model.CallChainNode;
 import com.repoinspector.model.EndpointInfo;
 import com.repoinspector.model.OperationType;
@@ -40,10 +41,8 @@ public final class CallChainAnalyzer {
 
     private static final Logger LOG = Logger.getInstance(CallChainAnalyzer.class);
 
-    private static final String TRANSACTIONAL_ANNOTATION =
-            "org.springframework.transaction.annotation.Transactional";
-    private static final String APPLICATION_CONTEXT_FQN =
-            "org.springframework.context.ApplicationContext";
+    private static final String TRANSACTIONAL_ANNOTATION = SpringAnnotations.TRANSACTIONAL;
+    private static final String APPLICATION_CONTEXT_FQN  = SpringAnnotations.APPLICATION_CONTEXT;
     private static final int MAX_DEPTH = 20; // safety guard for extremely deep chains
 
     private CallChainAnalyzer() {

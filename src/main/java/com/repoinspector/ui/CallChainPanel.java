@@ -4,8 +4,8 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.components.JBScrollPane;
-import com.repoinspector.analysis.CallChainCache;
-import com.repoinspector.analysis.EndpointFinder;
+import com.repoinspector.analysis.api.CallChainService;
+import com.repoinspector.analysis.api.EndpointAnalysisService;
 import com.repoinspector.model.CallChainNode;
 import com.repoinspector.model.EndpointInfo;
 import com.repoinspector.model.OperationType;
@@ -188,7 +188,7 @@ public class CallChainPanel extends JPanel {
         setStatus("Waiting for IDE indexing\u2026", UITheme.MUTED);
         DumbService.getInstance(project).runWhenSmart(() ->
             ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
+                List<EndpointInfo> endpoints = project.getService(EndpointAnalysisService.class).findAllEndpoints();
                 SwingUtilities.invokeLater(() -> {
                     endpointCombo.removeAllItems();
                     endpoints.forEach(endpointCombo::addItem);
@@ -215,7 +215,7 @@ public class CallChainPanel extends JPanel {
 
         setStatus("Analyzing call chain\u2026", UITheme.ACCENT);
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<CallChainNode> nodes = CallChainCache.getOrAnalyze(selected, project);
+            List<CallChainNode> nodes = project.getService(CallChainService.class).getOrAnalyze(selected);
             SwingUtilities.invokeLater(() -> renderResult(selected, nodes, false));
         });
     }
@@ -324,7 +324,7 @@ public class CallChainPanel extends JPanel {
             setStatus("No endpoint selected — nothing to clear.", UITheme.WARNING);
             return;
         }
-        CallChainCache.clear();
+        project.getService(CallChainService.class).clearCache();
         setStatus("Cache cleared. Click Trace to re-analyze.", UITheme.SUCCESS);
     }
 

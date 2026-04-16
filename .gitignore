@@ -40,3 +40,24 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Claude Code ###
+.claude/
+.intellijPlatform/
+
+### Logs ###
+*.log
+logs/
+
+### OS ###
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+### Temp / Backup ###
+*.tmp
+*.bak
+*.swp
+*.orig
+*~

@@ -6,10 +6,10 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
-import com.repoinspector.analysis.CallSiteAnalyzer;
+import com.repoinspector.analysis.api.RepositoryAnalysisService;
 import com.repoinspector.model.RepositoryMethodInfo;
 import com.repoinspector.runner.model.ParameterDef;
-import com.repoinspector.runner.service.PsiParamExtractor;
+import com.repoinspector.runner.service.api.ParameterExtractionService;
 import com.repoinspector.runner.ui.RepoRunnerPopup;
 
 import javax.swing.*;
@@ -170,12 +170,13 @@ public class RepoInspectorPanel extends JPanel {
         statusLabel.setForeground(UITheme.ACCENT);
 
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            CallSiteAnalyzer.AnalysisResult result = CallSiteAnalyzer.analyzeAll(project);
+            RepositoryAnalysisService.AnalysisResult result =
+                    project.getService(RepositoryAnalysisService.class).analyzeAll();
             SwingUtilities.invokeLater(() -> updateTable(result));
         });
     }
 
-    private void updateTable(CallSiteAnalyzer.AnalysisResult result) {
+    private void updateTable(RepositoryAnalysisService.AnalysisResult result) {
         tableModel.setRowCount(0);
         methodList = result.methods();
         lastInfos  = result.infos();
@@ -304,7 +305,7 @@ public class RepoInspectorPanel extends JPanel {
             String classFqn    = (cls != null && cls.getQualifiedName() != null)
                     ? cls.getQualifiedName() : "";
             String name        = method.getName();
-            List<ParameterDef> params = PsiParamExtractor.extract(method);
+            List<ParameterDef> params = ApplicationManager.getApplication().getService(ParameterExtractionService.class).extract(method);
 
             SwingUtilities.invokeLater(() -> {
                 RepoRunnerPopup popup = new RepoRunnerPopup(project, classFqn, name, params);

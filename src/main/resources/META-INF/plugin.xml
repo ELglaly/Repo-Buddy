@@ -155,6 +155,25 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
 
+        <!-- ── Analysis services (project-scoped) ─────────────────────────────── -->
+        <projectService
+                serviceInterface="com.repoinspector.analysis.api.RepositoryAnalysisService"
+                serviceImplementation="com.repoinspector.analysis.impl.DefaultRepositoryAnalysisService"/>
+        <projectService
+                serviceInterface="com.repoinspector.analysis.api.EndpointAnalysisService"
+                serviceImplementation="com.repoinspector.analysis.impl.DefaultEndpointAnalysisService"/>
+        <projectService
+                serviceInterface="com.repoinspector.analysis.api.CallChainService"
+                serviceImplementation="com.repoinspector.analysis.impl.DefaultCallChainService"/>
+        <applicationService
+                serviceInterface="com.repoinspector.runner.service.api.ParameterExtractionService"
+                serviceImplementation="com.repoinspector.runner.service.impl.DefaultParameterExtractionService"/>
+
+        <!-- ── Classifier (application-scoped, stateless) ─────────────────────── -->
+        <applicationService
+                serviceInterface="com.repoinspector.analysis.api.OperationClassifierService"
+                serviceImplementation="com.repoinspector.analysis.impl.DefaultOperationClassifierService"/>
+
         <codeInsight.lineMarkerProvider
                 language="JAVA"
                 implementationClass="com.repoinspector.gutter.RepoMethodGutterProvider"/>
