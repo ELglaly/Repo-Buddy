@@ -1,6 +1,7 @@
 package com.repoinspector.runner.ui;
 
 import com.repoinspector.runner.model.ParameterDef;
+import com.repoinspector.runner.service.ParameterTypeClassifier;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -85,7 +86,7 @@ final class RandomDataGenerator {
         if (byName != null) return byName;
 
         // ── 3. FieldType fallback ─────────────────────────────────────────────
-        return byFieldType(param.fieldType());
+        return byFieldType(ParameterTypeClassifier.classify(param.typeName()));
     }
 
     // =========================================================================

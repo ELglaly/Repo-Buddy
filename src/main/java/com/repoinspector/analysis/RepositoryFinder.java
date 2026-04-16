@@ -10,6 +10,7 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.searches.AnnotatedElementsSearch;
 import com.intellij.psi.search.searches.ClassInheritorsSearch;
+import com.repoinspector.constants.SpringAnnotations;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -26,14 +27,8 @@ public final class RepositoryFinder {
 
     private static final Logger LOG = Logger.getInstance(RepositoryFinder.class);
 
-    private static final String REPOSITORY_ANNOTATION = "org.springframework.stereotype.Repository";
-
-    private static final String[] SPRING_DATA_BASE_TYPES = {
-            "org.springframework.data.repository.Repository",
-            "org.springframework.data.repository.CrudRepository",
-            "org.springframework.data.jpa.repository.JpaRepository",
-            "org.springframework.data.repository.PagingAndSortingRepository"
-    };
+    private static final String   REPOSITORY_ANNOTATION  = SpringAnnotations.REPOSITORY;
+    private static final String[] SPRING_DATA_BASE_TYPES = SpringAnnotations.SPRING_DATA_BASE_TYPES;
 
     private RepositoryFinder() {
         // utility class

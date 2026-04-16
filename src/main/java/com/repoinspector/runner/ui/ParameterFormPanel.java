@@ -2,6 +2,7 @@ package com.repoinspector.runner.ui;
 
 import com.repoinspector.runner.model.ExecutionRequest.ParameterValue;
 import com.repoinspector.runner.model.ParameterDef;
+import com.repoinspector.runner.service.ParameterTypeClassifier;
 import com.repoinspector.ui.UITheme;
 
 import javax.swing.*;
@@ -194,7 +195,7 @@ class ParameterFormPanel extends JPanel {
     }
 
     private static String badgeText(ParameterDef param) {
-        return switch (param.fieldType()) {
+        return switch (ParameterTypeClassifier.classify(param.typeName())) {
             case BOOLEAN -> "boolean";
             case NUMBER  -> "int / long";
             case DECIMAL -> "float / double";
@@ -204,7 +205,7 @@ class ParameterFormPanel extends JPanel {
     }
 
     private static Color badgeColor(ParameterDef param) {
-        return switch (param.fieldType()) {
+        return switch (ParameterTypeClassifier.classify(param.typeName())) {
             case BOOLEAN -> UITheme.BADGE_BOOLEAN;
             case NUMBER  -> UITheme.BADGE_NUMBER;
             case DECIMAL -> UITheme.BADGE_DECIMAL;
@@ -218,7 +219,7 @@ class ParameterFormPanel extends JPanel {
     // =========================================================================
 
     private JComponent createInput(ParameterDef param) {
-        return switch (param.fieldType()) {
+        return switch (ParameterTypeClassifier.classify(param.typeName())) {
             case BOOLEAN -> {
                 JCheckBox cb = new JCheckBox();
                 cb.setToolTipText("Boolean: checked = true, unchecked = false");

@@ -15,11 +15,12 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentManager;
-import com.repoinspector.analysis.CallChainCache;
-import com.repoinspector.analysis.CallSiteAnalyzer;
-import com.repoinspector.analysis.EndpointFinder;
+import com.repoinspector.analysis.api.CallChainService;
+import com.repoinspector.analysis.api.EndpointAnalysisService;
+import com.repoinspector.constants.SpringAnnotations;
 import com.repoinspector.model.CallChainNode;
 import com.repoinspector.model.EndpointInfo;
+import com.repoinspector.runner.service.api.ParameterExtractionService;
 import com.repoinspector.ui.CallChainPanel;
 import org.jetbrains.annotations.NotNull;
 
@@ -39,14 +40,6 @@ public class TraceRepositoryCallsAction extends AnAction {
 
     private static final Logger LOG = Logger.getInstance(TraceRepositoryCallsAction.class);
 
-    private static final String[] MAPPING_ANNOTATIONS = {
-            "org.springframework.web.bind.annotation.GetMapping",
-            "org.springframework.web.bind.annotation.PostMapping",
-            "org.springframework.web.bind.annotation.PutMapping",
-            "org.springframework.web.bind.annotation.DeleteMapping",
-            "org.springframework.web.bind.annotation.PatchMapping",
-            "org.springframework.web.bind.annotation.RequestMapping",
-    };
 
     @Override
     public void update(@NotNull AnActionEvent e) {
@@ -76,8 +69,10 @@ public class TraceRepositoryCallsAction extends AnAction {
 
         // Find the matching EndpointInfo and trigger the trace
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<EndpointInfo> endpoints = EndpointFinder.findAllEndpoints(project);
-            String targetSig = CallSiteAnalyzer.buildSignature(method);
+            EndpointAnalysisService endpointService = project.getService(EndpointAnalysisService.class);
+            ParameterExtractionService paramService = ApplicationManager.getApplication().getService(ParameterExtractionService.class);
+            List<EndpointInfo> endpoints = endpointService.findAllEndpoints();
+            String targetSig = paramService.buildSignature(method);
             String targetClass = method.getContainingClass() != null
                     ? method.getContainingClass().getName() : "";
 
@@ -93,7 +88,7 @@ public class TraceRepositoryCallsAction extends AnAction {
 
             EndpointInfo match = matchOpt.get();
 
-            List<CallChainNode> result = CallChainCache.getOrAnalyze(match, project);
+            List<CallChainNode> result = project.getService(CallChainService.class).getOrAnalyze(match);
 
             final EndpointInfo finalMatch = match;
             final List<CallChainNode> finalResult = result;
@@ -126,7 +121,7 @@ public class TraceRepositoryCallsAction extends AnAction {
     }
 
     private static boolean isEndpointMethod(PsiMethod method) {
-        for (String fqn : MAPPING_ANNOTATIONS) {
+        for (String fqn : SpringAnnotations.HTTP_MAPPING_FQNS) {
             if (method.hasAnnotation(fqn)) {
                 return true;
             }

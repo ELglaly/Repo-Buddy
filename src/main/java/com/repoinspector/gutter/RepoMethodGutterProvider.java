@@ -10,9 +10,9 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiIdentifier;
 import com.intellij.psi.PsiMethod;
-import com.repoinspector.analysis.RepositoryFinder;
+import com.repoinspector.analysis.api.RepositoryAnalysisService;
 import com.repoinspector.runner.model.ParameterDef;
-import com.repoinspector.runner.service.PsiParamExtractor;
+import com.repoinspector.runner.service.api.ParameterExtractionService;
 import com.repoinspector.runner.ui.RepoRunnerPopup;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -73,7 +73,7 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
             if (fqn == null) continue;
 
             Project project = element.getProject();
-            if (!RepositoryFinder.isRepository(containingClass, project)) continue;
+            if (!project.getService(RepositoryAnalysisService.class).isRepository(containingClass)) continue;
 
             Icon icon = iconForMethod(method.getName());
             String tooltip = buildTooltip(containingClass.getName(), method);
@@ -126,7 +126,8 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
      * method signature, and parameter list.
      */
     private static String buildTooltip(String className, PsiMethod method) {
-        String paramSummary = PsiParamExtractor.summary(method);
+        Project project = method.getProject();
+        String paramSummary = ApplicationManager.getApplication().getService(ParameterExtractionService.class).summary(method);
         return "RepoBuddy \u25B6 "
                 + className + "."
                 + method.getName() + "("
@@ -154,7 +155,7 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
             String classFqn   = (cls != null && cls.getQualifiedName() != null)
                     ? cls.getQualifiedName() : "";
             String methodName = method.getName();
-            List<ParameterDef> params = PsiParamExtractor.extract(method);
+            List<ParameterDef> params = ApplicationManager.getApplication().getService(ParameterExtractionService.class).extract(method);
 
             javax.swing.SwingUtilities.invokeLater(() -> {
                 RepoRunnerPopup popup = new RepoRunnerPopup(project, classFqn, methodName, params);

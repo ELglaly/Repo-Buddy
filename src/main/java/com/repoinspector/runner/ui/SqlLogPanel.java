@@ -1,5 +1,6 @@
 package com.repoinspector.runner.ui;
 
+import com.repoinspector.constants.SqlKeywords;
 import com.repoinspector.runner.model.SqlLogEntry;
 import com.repoinspector.ui.UITheme;
 
@@ -11,7 +12,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Displays SQL statements captured by the Hibernate agent during method execution.
@@ -41,17 +41,6 @@ class SqlLogPanel extends JPanel {
     private static final Color HEADER_BG     = UITheme.SQL_BG.darker();
     private static final Color SEPARATOR_CLR = new Color(40, 55, 40);
 
-    /** SQL keywords rendered in the keyword colour. */
-    private static final Set<String> SQL_KEYWORDS = Set.of(
-            "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL",
-            "ON", "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE", "BETWEEN", "EXISTS",
-            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "DROP",
-            "TABLE", "INDEX", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
-            "DISTINCT", "AS", "CASE", "WHEN", "THEN", "ELSE", "END",
-            "UNION", "ALL", "EXCEPT", "INTERSECT", "WITH", "RETURNING",
-            "ASC", "DESC", "NULLS", "FIRST", "LAST",
-            "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "CAST"
-    );
 
     private final JTextPane textPane;
     private final JLabel    countLabel;
@@ -178,7 +167,7 @@ class SqlLogPanel extends JPanel {
 
             // Strip trailing punctuation for keyword check (e.g. "WHERE," → "WHERE")
             String bare = token.replaceAll("[^A-Za-z_]", "");
-            if (!bare.isEmpty() && SQL_KEYWORDS.contains(bare.toUpperCase())) {
+            if (!bare.isEmpty() && SqlKeywords.ALL.contains(bare.toUpperCase())) {
                 appendStyled(doc, token, keywordStyle);
             } else {
                 appendRegular(doc, token);
