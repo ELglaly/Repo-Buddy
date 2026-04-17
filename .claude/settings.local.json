@@ -11,7 +11,10 @@
       "Bash(unzip -p agent/build/libs/repoBuddy-agent-1.0.0.jar META-INF/MANIFEST.MF)",
       "Bash(./gradlew prepareSandbox)",
       "Bash(./gradlew prepareSandbox --dry-run)",
-      "Bash(find /e/RepoBuddy -type f -name \"*.java\" -exec wc -l {} +)"
+      "Bash(find /e/RepoBuddy -type f -name \"*.java\" -exec wc -l {} +)",
+      "Bash(jar tf *)",
+      "Bash(javap -p -classpath agent/build/libs/repoBuddy-agent-1.0.0.jar com.repoinspector.agent.service.ParameterConverter)",
+      "Bash(./gradlew buildPlugin)"
     ]
   }
 }
