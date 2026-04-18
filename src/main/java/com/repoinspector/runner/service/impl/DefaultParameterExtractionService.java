@@ -5,9 +5,9 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiType;
 import com.repoinspector.runner.model.ParameterDef;
+import com.repoinspector.runner.service.PsiParamExtractor;
 import com.repoinspector.runner.service.api.ParameterExtractionService;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -18,12 +18,7 @@ public final class DefaultParameterExtractionService implements ParameterExtract
 
     @Override
     public List<ParameterDef> extract(PsiMethod method) {
-        PsiParameter[] params = method.getParameterList().getParameters();
-        List<ParameterDef> defs = new ArrayList<>(params.length);
-        for (PsiParameter p : params) {
-            defs.add(new ParameterDef(p.getName(), p.getType().getPresentableText()));
-        }
-        return List.copyOf(defs);
+        return PsiParamExtractor.extract(method);
     }
 
     @Override

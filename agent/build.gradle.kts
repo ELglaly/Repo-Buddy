@@ -27,6 +27,15 @@ dependencies {
     annotationProcessor("org.springframework.boot:spring-boot-autoconfigure-processor")
 }
 
+tasks.withType<JavaCompile> {
+    // Never serve agent compilation from the Gradle build cache.
+    // Source changes in a small module like this are cheap to recompile,
+    // and a stale cached class causes the embedded agent JAR to be silently outdated.
+    outputs.cacheIf("agent module always recompiles from source") { false }
+    outputs.upToDateWhen { false }
+    options.compilerArgs.add("-Xlint:unchecked")
+}
+
 tasks.jar {
     archiveBaseName.set("repoBuddy-agent")
     manifest {
@@ -37,4 +46,6 @@ tasks.jar {
             "Can-Retransform-Classes" to "false"
         )
     }
+    // Always re-pack the JAR so the plugin's processResources detects the change.
+    outputs.upToDateWhen { false }
 }

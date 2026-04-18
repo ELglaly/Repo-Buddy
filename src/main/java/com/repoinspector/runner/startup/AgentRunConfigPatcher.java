@@ -14,35 +14,32 @@ import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 
 /**
- * Runs once per project open.  Injects {@code -javaagent:/tmp/repoBuddy-agent.jar}
+ * Runs once per project open. Injects {@code -javaagent:<tmp>/repoBuddy-agent-<hash>.jar}
  * into every Java / Spring Boot run configuration so the agent starts automatically
  * the next time the user launches their app from IntelliJ.
  *
  * <p>The agent JAR is bundled inside the plugin JAR as a classpath resource
- * ({@code /agent/repoBuddy-agent.jar}).  This class extracts it to the system temp
- * directory on first use so the path is always valid regardless of where IntelliJ
- * installed the plugin.
+ * ({@code /agent/repoBuddy-agent.jar}). Each build produces a distinct content hash,
+ * so the extracted file is named {@code repoBuddy-agent-<sha256>.jar}. This sidesteps
+ * the Windows file-lock problem: a running JVM holds the old versioned file open while
+ * the new version is written to a fresh path.
  */
 public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
 
     /** Resource path inside the plugin JAR. */
     private static final String AGENT_RESOURCE = "/agent/repoBuddy-agent.jar";
-    /** Stable file name used in the temp directory and in the -javaagent flag. */
-    private static final String AGENT_JAR_NAME = "repoBuddy-agent.jar";
-    /** Substring used to detect / update an existing agent flag. */
-    private static final String AGENT_MARKER   = "repoBuddy-agent";
+    /** Prefix for the versioned temp file and for detecting existing agent flags. */
+    private static final String AGENT_MARKER = "repoBuddy-agent";
 
-    /**
-     * Called by IntelliJ once per project open (ProjectActivity contract).
-     * The Continuation parameter is the Kotlin coroutine machinery — we ignore it
-     * and return Unit.INSTANCE to signal synchronous completion.
-     */
     @Override
     public Object execute(@NotNull Project project,
                           @NotNull Continuation<? super Unit> continuation) {
@@ -77,7 +74,7 @@ public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
             String current = cfg.getVMParameters();
 
             if (current != null && current.contains(AGENT_MARKER)) {
-                // Already present — update the path in case the plugin was reinstalled.
+                // Already present — update the path so the latest build's agent is used.
                 String updated = current
                         .replaceAll("-javaagent:\\S*" + AGENT_MARKER + "\\S*", jvmFlag)
                         .trim();
@@ -102,36 +99,67 @@ public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
     }
 
     /**
-     * Extracts the agent JAR from the plugin's classpath resources to the system
-     * temp directory and returns its path.  Returns {@code null} on any failure.
+     * Reads the embedded agent JAR bytes, derives a SHA-256 hash, and writes the JAR
+     * to {@code <tmpdir>/repoBuddy-agent-<hash>.jar} if that file doesn't already exist.
      *
-     * <p>Falls back to the agent module's Gradle build output when the plugin is
-     * being run directly from the IDE (i.e. the plugin JAR has not been assembled yet
-     * and the resource is therefore absent from the classpath).
+     * <p>Using a content-addressed filename means each plugin build gets its own file.
+     * A running JVM keeps the old versioned file open (Windows file-lock), but the new
+     * version is written to a different path — so both can coexist safely.
      */
     @Nullable
     private static Path extractAgentJar() {
-        try (InputStream in = openAgentJarStream()) {
-            if (in == null) return null;
-            Path dest = Path.of(System.getProperty("java.io.tmpdir"), AGENT_JAR_NAME);
-            Files.copy(in, dest, StandardCopyOption.REPLACE_EXISTING);
+        byte[] jarBytes = readAgentJarBytes();
+        if (jarBytes == null) return null;
+
+        String hash = sha256Hex(jarBytes);
+        if (hash == null) return null;
+
+        String fileName = AGENT_MARKER + "-" + hash + ".jar";
+        Path dest = Path.of(System.getProperty("java.io.tmpdir"), fileName);
+
+        if (Files.exists(dest)) return dest; // already extracted for this build
+
+        try {
+            Files.write(dest, jarBytes);
             return dest;
         } catch (Exception e) {
             return null;
         }
     }
 
+    /** Reads the entire agent JAR into memory, or returns {@code null} on failure. */
+    @Nullable
+    private static byte[] readAgentJarBytes() {
+        try (InputStream in = openAgentJarStream()) {
+            if (in == null) return null;
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            in.transferTo(buf);
+            return buf.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Nullable
+    private static String sha256Hex(byte[] data) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(data);
+            return HexFormat.of().formatHex(digest).substring(0, 16); // first 16 hex chars is enough
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
-     * Opens the agent JAR as a stream, first from the plugin classpath resource,
+     * Opens the agent JAR as a stream — first from the plugin classpath resource,
      * then from the agent module's Gradle build output (development-mode fallback).
      */
     @Nullable
     private static InputStream openAgentJarStream() {
         InputStream in = AgentRunConfigPatcher.class.getResourceAsStream(AGENT_RESOURCE);
         if (in != null) return in;
-        // Fallback: when running via "Run Plugin" from the IDE without a full Gradle build,
-        // the plugin JAR hasn't been assembled and the resource isn't on the classpath.
-        // Walk up from the class location to find agent/build/libs/repoBuddy-agent-*.jar.
+        // Fallback: when running via "Run Plugin" from the IDE the plugin JAR hasn't been
+        // assembled, so the resource isn't on the classpath. Walk up to find the build output.
         try {
             Path location = Path.of(
                     AgentRunConfigPatcher.class.getProtectionDomain()

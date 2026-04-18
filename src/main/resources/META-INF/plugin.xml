@@ -28,10 +28,7 @@
   <li>Teams building complex JPA queries who need fast feedback</li>
   <li>Developers reviewing or refactoring repository logic</li>
 </ul>
-  ]]></description>
 
-    <!-- ── Plugin Features ───────────────────────────────────────────────── -->
-    <plugin-features><![CDATA[
 <h3>Plugin Features</h3>
 <ul>
   <li>
@@ -89,10 +86,7 @@
     themes with zero configuration.
   </li>
 </ul>
-  ]]></plugin-features>
 
-    <!-- ── Getting Started ───────────────────────────────────────────────── -->
-    <getting-started><![CDATA[
 <h3>Getting Started</h3>
 <ol>
   <li>Open a Spring Boot project. RepoBuddy patches your run configuration automatically.</li>
@@ -101,10 +95,7 @@
   <li>Fill in parameters (or hit &#127922; Generate All), then click Run.</li>
   <li>See the JSON result, captured SQL, and execution time — all in the popup.</li>
 </ol>
-  ]]></getting-started>
 
-    <!-- ── Technical Information ─────────────────────────────────────────── -->
-    <technical-information><![CDATA[
 <h3>Technical Information</h3>
 <p><b>Supported parameter types:</b></p>
 <p>
@@ -120,27 +111,21 @@
   <li>Spring Boot 3.x with Spring Data JPA on the classpath</li>
   <li>App must be running locally (started from IntelliJ)</li>
 </ul>
-  ]]></technical-information>
 
-    <!-- ── Contacts &amp; Resources ──────────────────────────────────────── -->
-    <contacts-and-resources><![CDATA[
 <h3>Contacts &amp; Resources</h3>
 <ul>
   <li><b>Issues &amp; feature requests:</b> <a href="https://github.com/ELglaly/RepoBuddy/issues">GitHub Issues</a></li>
   <li><b>Source code:</b> <a href="https://github.com/ELglaly/RepoBuddy">github.com/ELglaly/RepoBuddy</a></li>
   <li><b>Plugin page:</b> <a href="https://plugins.jetbrains.com/plugin/repobuddy">JetBrains Marketplace</a></li>
 </ul>
-  ]]></contacts-and-resources>
 
-    <!-- ── Vendor Information ─────────────────────────────────────────────── -->
-    <vendor-information><![CDATA[
 <h3>Vendor Information</h3>
 <ul>
   <li><b>Author:</b> Sherif Elglaly</li>
   <li><b>Email:</b> <a href="mailto:sherifelglaly@gmail.com">sherifelglaly@gmail.com</a></li>
   <li><b>Website:</b> <a href="https://elglaly.github.io/Sherif-Elglaly/">elglaly.github.io/Sherif-Elglaly</a></li>
 </ul>
-  ]]></vendor-information>
+  ]]></description>
 
   <change-notes><![CDATA[
 <h3>1.0.0 — Initial Release</h3>
