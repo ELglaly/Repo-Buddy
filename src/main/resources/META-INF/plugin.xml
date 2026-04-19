@@ -13,27 +13,26 @@
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+    <!-- ── Description ───────────────────────────────────────────────────── -->
     <description><![CDATA[
 <h2>RepoBuddy — Run &amp; Inspect Spring Data Repositories from IntelliJ</h2>
-
 <p>
   RepoBuddy lets you execute any Spring Data JPA repository method directly from the editor —
   without writing a test, opening a REST client, or redeploying your app.
   Click the gutter icon next to a repository method, fill in the parameters, and see the real
   query result, the captured SQL, and the execution time instantly.
 </p>
-
-<h3>Who is it for?</h3>
+<p><b>Who is it for?</b></p>
 <ul>
   <li>Spring Boot developers who debug data-layer issues daily</li>
   <li>Teams building complex JPA queries who need fast feedback</li>
   <li>Developers reviewing or refactoring repository logic</li>
 </ul>
 
-<h3>Key Features</h3>
+<h3>Plugin Features</h3>
 <ul>
   <li>
-    <b>Run ▶ gutter icon</b> — every Spring Data repository method gets a clickable run marker.
+    <b>Run ⌕ | ✎ gutter icon</b> — every Spring Data repository method gets a clickable run marker.
     One click opens the execution popup.
   </li>
   <li>
@@ -53,22 +52,13 @@
     Supports String, Long, Boolean, Pageable, UUID, LocalDate, enums, and arbitrary JSON objects.
   </li>
   <li>
-    <b>&#127922; Random data generation</b> — fill fields instantly with type-aware sample values.
+    <b>Random data generation</b> — fill fields instantly with type-aware sample values.
     Recognises 30+ name hints (email, phone, city, status, &hellip;) and known types (Pageable, UUID,
-    LocalDate, BigDecimal, &hellip;). A <b>&#127922; Generate All</b> button fills every field at once;
+    LocalDate, BigDecimal, &hellip;). A <b>Generate All</b> button fills every field at once;
     individual per-field dice buttons let you randomise one parameter at a time.
   </li>
   <li>
-    <b>Pageable / PageRequest support</b> — JSON-driven input with page, size, and sort direction.
-    The agent deserialises it into a real <code>PageRequest</code> — no Jackson abstract-type crash.
-  </li>
-  <li>
-    <b>Enum reflection</b> — enum parameters are resolved against the app's loaded constants
-    via reflection. Falls back to the first real constant (with a helpful log message listing all
-    available values) so execution never crashes on an unknown placeholder.
-  </li>
-  <li>
-    <b>&#9679; Agent status indicator</b> — the popup header shows a live
+    <b>Agent status indicator</b> — the popup header shows a live
     <i>&#9679; Agent Ready</i> / <i>&#9679; Offline</i> badge so you know at a glance whether
     the agent is reachable before hitting Run.
   </li>
@@ -97,41 +87,55 @@
   </li>
 </ul>
 
-<h3>How it works</h3>
+<h3>Getting Started</h3>
 <ol>
   <li>Open a Spring Boot project. RepoBuddy patches your run configuration automatically.</li>
   <li>Start your app with the ▶ button. The agent binds to a free port and writes it to a temp file.</li>
-  <li>Click the ▶ gutter icon next to any repository method.</li>
+  <li>Click the ⌕ | ✎ gutter icon next to any repository method.</li>
   <li>Fill in parameters (or hit &#127922; Generate All), then click Run.</li>
   <li>See the JSON result, captured SQL, and execution time — all in the popup.</li>
 </ol>
 
-<h3>Supported parameter types</h3>
+<h3>Technical Information</h3>
+<p><b>Supported parameter types:</b></p>
 <p>
   String, Long, Integer, Boolean, Double, Float, Short, Byte, BigDecimal,
   UUID, LocalDate, LocalDateTime, ZonedDateTime, Pageable / PageRequest (with sort),
   Sort, Enum (resolved against real constants via reflection), List&lt;String&gt;,
   List&lt;Long&gt;, and any other type accepted as JSON.
 </p>
-
-<h3>Requirements</h3>
+<p><b>Requirements:</b></p>
 <ul>
   <li>IntelliJ IDEA 2024.1 or later (Community or Ultimate)</li>
   <li>Java 17 or later</li>
   <li>Spring Boot 3.x with Spring Data JPA on the classpath</li>
   <li>App must be running locally (started from IntelliJ)</li>
 </ul>
+
+<h3>Contacts &amp; Resources</h3>
+<ul>
+  <li><b>Issues &amp; feature requests:</b> <a href="https://github.com/ELglaly/RepoBuddy/issues">GitHub Issues</a></li>
+  <li><b>Source code:</b> <a href="https://github.com/ELglaly/RepoBuddy">github.com/ELglaly/RepoBuddy</a></li>
+  <li><b>Plugin page:</b> <a href="https://plugins.jetbrains.com/plugin/repobuddy">JetBrains Marketplace</a></li>
+</ul>
+
+<h3>Vendor Information</h3>
+<ul>
+  <li><b>Author:</b> Sherif Elglaly</li>
+  <li><b>Email:</b> <a href="mailto:sherifelglaly@gmail.com">sherifelglaly@gmail.com</a></li>
+  <li><b>Website:</b> <a href="https://elglaly.github.io/Sherif-Elglaly/">elglaly.github.io/Sherif-Elglaly</a></li>
+</ul>
   ]]></description>
 
   <change-notes><![CDATA[
 <h3>1.0.0 — Initial Release</h3>
 <ul>
-  <li>Run &#9654; gutter icon on all Spring Data repository methods</li>
+  <li>Run ⌕ | ✎ gutter icon on all Spring Data repository methods</li>
   <li>Live execution via embedded Java agent (no Spring Security interference)</li>
   <li>SQL capture via Hibernate StatementInspector</li>
   <li>Smart parameter form with per-type widgets</li>
-  <li>&#127922; Random data generation with 30+ name-hint rules (email, phone, city, status, UUID, &hellip;)</li>
-  <li>Per-field &#127922; dice buttons + &#127922; Generate All — fill one or all parameters in one click</li>
+  <li>Random data generation with 30+ name-hint rules (email, phone, city, status, UUID, &hellip;)</li>
+  <li>Per-field dice buttons + Generate All — fill one or all parameters in one click</li>
   <li>Pageable / PageRequest support — JSON input deserialized into a real PageRequest with sort parsing;
       fixes Jackson <code>InvalidDefinitionException</code> on abstract interface</li>
   <li>Enum resolution against real constants via reflection; falls back to first constant with a log

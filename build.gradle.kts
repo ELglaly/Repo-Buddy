@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.elglaly"
-version = "3.0-SNAPSHOT"
+version = "1.0.1"
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -21,7 +21,9 @@ evaluationDependsOn(":agent")
 
 tasks.processResources {
     dependsOn(":agent:jar")
-    from(project(":agent").tasks.named<Jar>("jar")) {
+    val agentJar = project(":agent").tasks.named<Jar>("jar")
+    inputs.files(agentJar.map { it.outputs.files })
+    from(agentJar) {
         into("agent")
         rename { "repoBuddy-agent.jar" }
     }
@@ -30,10 +32,18 @@ tasks.processResources {
 dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
 
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+
     intellijPlatform {
         create("IC", "2025.1")
         bundledPlugin("com.intellij.java")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks {
