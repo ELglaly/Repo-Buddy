@@ -40,10 +40,15 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **▶ Gutter icon** on every Spring Data JPA repository method — one click opens the execution popup
 - **Live execution against your running app** — a lightweight Java agent plugs into your Spring Boot process; the real JPA context runs the method (no simulation, no mocking)
 - **Execution time** colour-coded green / amber / red (< 100 ms / 100–499 ms / ≥ 500 ms)
+- 
+<img width="1061" height="287" alt="image" src="https://github.com/user-attachments/assets/fa9eb409-bd61-40e6-8b13-06c8d16d92c4" />
 
 ### Full SQL Transparency
 - **SQL capture** via Hibernate's `StatementInspector` — every statement triggered by the call is intercepted, ordered, and timestamped
 - See the exact queries your method generates — N+1 problems have nowhere to hide
+-  
+<img width="1103" height="828" alt="Screenshot 2026-04-16 092400" src="https://github.com/user-attachments/assets/b0dcbb77-07d9-4b4c-babe-1a256e5262a2" />
+
 
 ### Smart Parameter Input
 - **Type-aware parameter form** — input widgets generated per parameter type
@@ -56,6 +61,8 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **Per-field dice buttons** for randomising individual parameters
 - **30+ name-hint rules** — recognises hints like `email`, `phone`, `city`, `status`, `uuid`, and maps them to realistic values automatically
 
+<img width="1645" height="667" alt="Screenshot 2026-04-16 092235" src="https://github.com/user-attachments/assets/58114092-75f2-4e27-9b3b-2320987d6e71" />
+
 ### Call Chain Tracer
 - Pick any Spring MVC endpoint from the combo box and trace every repository method reachable from it
 - Results render as an **expandable tree** with double-click navigation to source
@@ -63,11 +70,17 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **Summary bar** counts READ / WRITE / `@Transactional` calls and unique entity types touched
 - Expand All / Collapse All / Clear Cache controls built in
 
+   <img width="1640" height="605" alt="Screenshot 2026-04-16 092434" src="https://github.com/user-attachments/assets/c8eac4ab-f88c-4f9f-b4ce-431fee92c621" />
+
+  <img width="1633" height="626" alt="Screenshot 2026-04-16 092552" src="https://github.com/user-attachments/assets/d2f45bda-2504-4c65-a040-a7ce8cef0b85" />
+
 ### Repository Usage Table
 - Lists **all repository methods** with call-count badges (red = never called, amber = rarely called, green = frequently called)
 - **Live search** filters by repository or method name
 - **Show Unused Only** toggle to focus instantly on dead code
 - **Export to CSV** with one click
+<img width="1645" height="667" alt="Screenshot 2026-04-16 092235" src="https://github.com/user-attachments/assets/34bb1f53-c629-4976-8f9b-03c8942e7ac4" />
+
 
 ### Zero Configuration
 - **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2024.1+)
