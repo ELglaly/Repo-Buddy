@@ -1,5 +1,6 @@
 package com.repoinspector.runner.service;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 
 import java.nio.file.Files;
@@ -17,6 +18,8 @@ import java.nio.file.Path;
  * no fixed port, no possible clash with {@code server.port} or Spring Security.
  */
 public final class SpringAppUrlResolver {
+
+    private static final Logger LOG = Logger.getInstance(SpringAppUrlResolver.class);
 
     /** Must match {@code RepoBuddyAgentServer.PORT_FILE_NAME} in the agent module. */
     public static final String PORT_FILE_NAME = "repoBuddy-agent.port";
@@ -36,7 +39,11 @@ public final class SpringAppUrlResolver {
         try {
             int port = Integer.parseInt(Files.readString(portFile).trim());
             return "http://localhost:" + port;
+        } catch (NumberFormatException e) {
+            LOG.warn("RepoBuddy: port file contains invalid content: " + portFile, e);
+            return null;
         } catch (Exception e) {
+            LOG.warn("RepoBuddy: could not read port file: " + portFile, e);
             return null;
         }
     }

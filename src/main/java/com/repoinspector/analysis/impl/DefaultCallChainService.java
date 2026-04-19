@@ -39,6 +39,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * from a Spring MVC endpoint to all reachable repository methods.
  *
  * <p>Results are cached per endpoint and automatically invalidated on any PSI modification.
+ * Only derived data (strings, flags) is cached — live {@code PsiMethod} references are
+ * stripped before storage so GC is not blocked across read actions.
  */
 @Service(Service.Level.PROJECT)
 public final class DefaultCallChainService implements CallChainService {
@@ -48,13 +50,24 @@ public final class DefaultCallChainService implements CallChainService {
 
     private record CachedEntry(long modificationCount, List<CallChainNode> nodes) {}
 
-    // Cache key: "ControllerName#methodSignature"
+    /** Returned by {@link #collectCallees} — callees to recurse into + dynamic sentinel nodes. */
+    private record CollectResult(List<PsiMethod> callees, List<CallChainNode> dynamicNodes) {}
+
+    // Cache key: "ControllerName#methodSignature" → PSI-free nodes
     private final Map<String, CachedEntry> cache = new ConcurrentHashMap<>();
 
-    private final Project project;
+    private final Project                  project;
+    private final RepositoryAnalysisService  repoService;
+    private final OperationClassifierService classifierService;
+    private final ParameterExtractionService paramService;
 
     public DefaultCallChainService(@NotNull Project project) {
-        this.project = project;
+        this.project           = project;
+        this.repoService       = project.getService(RepositoryAnalysisService.class);
+        this.classifierService = ApplicationManager.getApplication()
+                .getService(OperationClassifierService.class);
+        this.paramService      = ApplicationManager.getApplication()
+                .getService(ParameterExtractionService.class);
     }
 
     // =========================================================================
@@ -72,7 +85,9 @@ public final class DefaultCallChainService implements CallChainService {
         }
 
         List<CallChainNode> nodes = analyze(endpoint);
-        cache.put(key, new CachedEntry(currentStamp, List.copyOf(nodes)));
+        // Strip PSI before caching so GC can collect the PSI subtree.
+        List<CallChainNode> cacheNodes = nodes.stream().map(CallChainNode::withoutPsi).toList();
+        cache.put(key, new CachedEntry(currentStamp, cacheNodes));
         return nodes;
     }
 
@@ -89,7 +104,7 @@ public final class DefaultCallChainService implements CallChainService {
         return ApplicationManager.getApplication().runReadAction((Computable<List<CallChainNode>>) () -> {
             List<CallChainNode> result  = new ArrayList<>();
             Set<PsiMethod>      visited = new HashSet<>();
-            if (endpoint.psiMethod() != null) {
+            if (endpoint.psiMethod() != null && endpoint.psiMethod().isValid()) {
                 dfs(endpoint.psiMethod(), 0, visited, result);
             }
             LOG.info("analyze: " + endpoint.httpMethod() + " " + endpoint.path()
@@ -105,29 +120,26 @@ public final class DefaultCallChainService implements CallChainService {
         PsiClass containingClass = method.getContainingClass();
         if (containingClass == null) return;
 
-        RepositoryAnalysisService   repoService       = project.getService(RepositoryAnalysisService.class);
-        OperationClassifierService  classifierService = ApplicationManager.getApplication()
-                .getService(OperationClassifierService.class);
-        ParameterExtractionService  paramService      = ApplicationManager.getApplication()
-                .getService(ParameterExtractionService.class);
-
         boolean isRepo         = repoService.isRepository(containingClass);
         boolean isTransactional = classifierService.isTransactional(method);
         String  className      = containingClass.getName() != null ? containingClass.getName() : "Unknown";
+        String  qualifiedName  = containingClass.getQualifiedName();
         String  signature      = paramService.buildSignature(method);
 
         if (isRepo) {
             OperationType opType = classifierService.classify(method);
             String        entity = classifierService.extractEntityName(containingClass);
             result.add(new CallChainNode(className, signature, depth, true, opType, entity,
-                    isTransactional, false, method));
-            return; // do not recurse into repository internals
+                    isTransactional, false, qualifiedName, method));
+            return;
         }
 
         result.add(new CallChainNode(className, signature, depth, false, OperationType.UNKNOWN,
-                "", isTransactional, false, method));
+                "", isTransactional, false, qualifiedName, method));
 
-        for (PsiMethod callee : collectCallees(method, result, depth)) {
+        CollectResult collected = collectCallees(method, depth);
+        result.addAll(collected.dynamicNodes());
+        for (PsiMethod callee : collected.callees()) {
             dfs(callee, depth + 1, visited, result);
         }
     }
@@ -136,16 +148,18 @@ public final class DefaultCallChainService implements CallChainService {
     // Callee collection
     // =========================================================================
 
-    private List<PsiMethod> collectCallees(PsiMethod method, List<CallChainNode> result, int depth) {
-        List<PsiMethod> callees = new ArrayList<>();
+    private CollectResult collectCallees(PsiMethod method, int depth) {
+        List<PsiMethod>    callees      = new ArrayList<>();
+        List<CallChainNode> dynamicNodes = new ArrayList<>();
+
         method.accept(new JavaRecursiveElementVisitor() {
             @Override
             public void visitMethodCallExpression(PsiMethodCallExpression call) {
                 super.visitMethodCallExpression(call);
 
                 if (isDynamicBeanAccess(call)) {
-                    result.add(new CallChainNode("ApplicationContext", "getBean(...)",
-                            depth + 1, false, OperationType.UNKNOWN, "", false, true, null));
+                    dynamicNodes.add(new CallChainNode("ApplicationContext", "getBean(...)",
+                            depth + 1, false, OperationType.UNKNOWN, "", false, true, null, null));
                     return;
                 }
 
@@ -155,31 +169,38 @@ public final class DefaultCallChainService implements CallChainService {
                 }
             }
         });
-        return callees;
+
+        return new CollectResult(callees, dynamicNodes);
     }
 
     // =========================================================================
-    // Polymorphism resolution (Phase 5 — extracted from CallChainAnalyzer)
+    // Polymorphism resolution
     // =========================================================================
 
     private PsiMethod resolveToConcreteMethod(PsiMethod method) {
         PsiClass cls = method.getContainingClass();
         if (cls == null) return method;
-
-        boolean isAbstract = cls.isInterface() || cls.hasModifierProperty("abstract");
-        if (!isAbstract) return method;
+        if (!cls.isInterface() && !cls.hasModifierProperty("abstract")) return method;
 
         GlobalSearchScope scope = GlobalSearchScope.projectScope(project);
+        List<PsiMethod> candidates = new ArrayList<>();
         for (PsiClass impl : ClassInheritorsSearch.search(cls, scope, true)) {
             if (impl.isInterface() || impl.hasModifierProperty("abstract")) continue;
             PsiMethod[] overrides = impl.findMethodsBySignature(method, false);
-            if (overrides.length > 0) return overrides[0];
+            if (overrides.length > 0) candidates.add(overrides[0]);
         }
-        return method;
+
+        if (candidates.isEmpty()) return method;
+        if (candidates.size() > 1) {
+            LOG.warn("resolveToConcreteMethod: " + candidates.size() + " implementations found for "
+                    + cls.getQualifiedName() + "." + method.getName()
+                    + " — using first; call chain may be inaccurate");
+        }
+        return candidates.get(0);
     }
 
     // =========================================================================
-    // Dynamic bean detection (Phase 5 — extracted from CallChainAnalyzer)
+    // Dynamic bean detection
     // =========================================================================
 
     private boolean isDynamicBeanAccess(PsiMethodCallExpression call) {
@@ -195,7 +216,7 @@ public final class DefaultCallChainService implements CallChainService {
         PsiClass resolvedClass = classType.resolve();
         if (resolvedClass == null) return false;
 
-        JavaPsiFacade facade     = JavaPsiFacade.getInstance(project);
+        JavaPsiFacade facade      = JavaPsiFacade.getInstance(project);
         PsiClass      appCtxClass = facade.findClass(SpringAnnotations.APPLICATION_CONTEXT,
                 GlobalSearchScope.allScope(project));
         return appCtxClass != null && resolvedClass.isInheritor(appCtxClass, true);

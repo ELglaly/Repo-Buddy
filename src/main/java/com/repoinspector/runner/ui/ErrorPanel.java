@@ -22,7 +22,7 @@ import java.awt.datatransfer.StringSelection;
 class ErrorPanel extends JPanel {
 
     private static final Color HEADER_BG     = UITheme.ERROR_BG.darker();
-    private static final Color SEPARATOR_CLR = new Color(80, 30, 30);
+    private static final Color SEPARATOR_CLR = UITheme.SEPARATOR_ERROR;
 
     private final JTextArea textArea;
     private final JLabel    titleLabel;

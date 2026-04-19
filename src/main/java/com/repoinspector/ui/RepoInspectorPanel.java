@@ -1,7 +1,11 @@
 package com.repoinspector.ui;
 
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
 import com.intellij.ui.components.JBScrollPane;
@@ -11,6 +15,8 @@ import com.repoinspector.model.RepositoryMethodInfo;
 import com.repoinspector.runner.model.ParameterDef;
 import com.repoinspector.runner.service.api.ParameterExtractionService;
 import com.repoinspector.runner.ui.RepoRunnerPopup;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -20,6 +26,7 @@ import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -57,11 +64,18 @@ public class RepoInspectorPanel extends JPanel {
     private final JLabel           statusLabel;
     private final JTextField       searchField;
     private final JToggleButton    unusedOnlyToggle;
+    private final JToggleButton    currentFileToggle;
     private final JButton          runButton;
 
     /** Parallel list of PSI references for double-click navigation (model-index aligned). */
     private List<PsiMethod>             methodList  = List.of();
     private List<RepositoryMethodInfo>  lastInfos   = List.of();
+
+    /**
+     * Simple class name of the file open in the editor when "Current File" is active.
+     * {@code null} means the filter is inactive.
+     */
+    @Nullable private String currentFileClassName = null;
 
     public RepoInspectorPanel(Project project) {
         super(new BorderLayout());
@@ -83,6 +97,20 @@ public class RepoInspectorPanel extends JPanel {
         unusedOnlyToggle.setFocusPainted(false);
         unusedOnlyToggle.setToolTipText("Restrict view to repository methods that are never called");
         unusedOnlyToggle.addItemListener(e -> applyFilter());
+
+        // ── Current File toggle ───────────────────────────────────────────────
+        currentFileToggle = new JToggleButton("Current File");
+        currentFileToggle.setFont(currentFileToggle.getFont().deriveFont(11f));
+        currentFileToggle.setFocusPainted(false);
+        currentFileToggle.setToolTipText("Show only repository methods called from the currently open file");
+        currentFileToggle.addItemListener(e -> {
+            if (currentFileToggle.isSelected()) {
+                loadCurrentFileFilter();
+            } else {
+                currentFileClassName = null;
+                applyFilter();
+            }
+        });
 
         // ── Export CSV button ─────────────────────────────────────────────────
         JButton exportCsvButton = UITheme.button("\u21A7  Export CSV");
@@ -111,6 +139,7 @@ public class RepoInspectorPanel extends JPanel {
         searchBar.add(new JLabel("Search:"));
         searchBar.add(searchField);
         searchBar.add(unusedOnlyToggle);
+        searchBar.add(currentFileToggle);
         searchBar.add(exportCsvButton);
 
         JPanel buttonBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 2));
@@ -159,6 +188,8 @@ public class RepoInspectorPanel extends JPanel {
         });
 
         add(new JBScrollPane(table), BorderLayout.CENTER);
+
+        SwingUtilities.invokeLater(this::runAnalysis);
     }
 
     // =========================================================================
@@ -166,13 +197,16 @@ public class RepoInspectorPanel extends JPanel {
     // =========================================================================
 
     private void runAnalysis() {
-        statusLabel.setText("  Analyzing\u2026");
-        statusLabel.setForeground(UITheme.ACCENT);
-
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            RepositoryAnalysisService.AnalysisResult result =
-                    project.getService(RepositoryAnalysisService.class).analyzeAll();
-            SwingUtilities.invokeLater(() -> updateTable(result));
+        statusLabel.setText("  Waiting for IDE indexing\u2026");
+        statusLabel.setForeground(UITheme.MUTED);
+        DumbService.getInstance(project).runWhenSmart(() -> {
+            statusLabel.setText("  Analyzing\u2026");
+            statusLabel.setForeground(UITheme.ACCENT);
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                RepositoryAnalysisService.AnalysisResult result =
+                        project.getService(RepositoryAnalysisService.class).analyzeAll();
+                SwingUtilities.invokeLater(() -> updateTable(result));
+            });
         });
     }
 
@@ -180,6 +214,7 @@ public class RepoInspectorPanel extends JPanel {
         tableModel.setRowCount(0);
         methodList = result.methods();
         lastInfos  = result.infos();
+        currentFileClassName = null;
 
         for (RepositoryMethodInfo info : lastInfos) {
             tableModel.addRow(new Object[]{
@@ -190,8 +225,12 @@ public class RepoInspectorPanel extends JPanel {
             });
         }
 
-        applyFilter();
-        updateStatusLabel();
+        if (currentFileToggle.isSelected()) {
+            loadCurrentFileFilter();
+        } else {
+            applyFilter();
+            updateStatusLabel();
+        }
     }
 
     // =========================================================================
@@ -199,18 +238,51 @@ public class RepoInspectorPanel extends JPanel {
     // =========================================================================
 
     private void applyFilter() {
-        String text   = searchField.getText().trim();
-        boolean onlyUnused = unusedOnlyToggle.isSelected();
+        String  text           = searchField.getText().trim();
+        boolean onlyUnused     = unusedOnlyToggle.isSelected();
+        boolean currentFileActive = currentFileToggle.isSelected() && currentFileClassName != null;
 
-        if (text.isEmpty() && !onlyUnused) {
+        if (text.isEmpty() && !onlyUnused && !currentFileActive) {
             rowSorter.setRowFilter(null);
         } else {
-            rowSorter.setRowFilter(RowFilter.andFilter(java.util.Arrays.asList(
-                    buildTextFilter(text),
-                    buildUnusedFilter(onlyUnused)
-            )));
+            List<RowFilter<DefaultTableModel, Integer>> filters = new ArrayList<>();
+            filters.add(buildTextFilter(text));
+            filters.add(buildUnusedFilter(onlyUnused));
+            if (currentFileActive) {
+                filters.add(buildCurrentFileFilter(currentFileClassName));
+            }
+            rowSorter.setRowFilter(RowFilter.andFilter(filters));
         }
         updateStatusLabel();
+    }
+
+    private void loadCurrentFileFilter() {
+        com.intellij.openapi.editor.Editor editor =
+                FileEditorManager.getInstance(project).getSelectedTextEditor();
+        if (editor == null) {
+            statusLabel.setText("  No file open in editor.");
+            statusLabel.setForeground(UITheme.WARNING);
+            currentFileToggle.setSelected(false);
+            return;
+        }
+        VirtualFile vf = FileDocumentManager.getInstance().getFile(editor.getDocument());
+        if (vf == null) {
+            currentFileToggle.setSelected(false);
+            return;
+        }
+        currentFileClassName = vf.getNameWithoutExtension();
+        applyFilter();
+    }
+
+    private static RowFilter<DefaultTableModel, Integer> buildCurrentFileFilter(
+            @NotNull String className) {
+        return new RowFilter<>() {
+            @Override
+            public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> entry) {
+                Object val = entry.getValue(COL_REPO);
+                return className.equalsIgnoreCase(val != null ? val.toString() : "");
+            }
+        };
     }
 
     private static RowFilter<DefaultTableModel, Integer> buildTextFilter(String text) {

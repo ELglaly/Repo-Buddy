@@ -3,12 +3,19 @@ package com.repoinspector.ui;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.psi.JavaPsiFacade;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.ui.components.JBScrollPane;
 import com.repoinspector.analysis.api.CallChainService;
 import com.repoinspector.analysis.api.EndpointAnalysisService;
 import com.repoinspector.model.CallChainNode;
 import com.repoinspector.model.EndpointInfo;
 import com.repoinspector.model.OperationType;
+import com.repoinspector.runner.service.api.ParameterExtractionService;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
@@ -24,48 +31,38 @@ import java.util.List;
 /**
  * Tool-window panel for the "Call Chain Tracer" tab.
  *
- * <p>Layout:
- * <pre>
- *  ┌─ NORTH ─────────────────────────────────────────────────────────────────┐
- *  │  Endpoint: [combo▼]  [Trace]  [↻ Refresh]  [⌘ Copy]                    │
- *  │  [⊞ Expand All]  [⊟ Collapse All]  [✖ Clear Cache]  [Repos Only toggle] │
- *  │  &lt;status label&gt;                                                         │
- *  └─────────────────────────────────────────────────────────────────────────┘
- *  ┌─ CENTER ────────────────────────────────────────────────────────────────┐
- *  │  JTree — call-chain result with custom colour renderer                  │
- *  └─────────────────────────────────────────────────────────────────────────┘
- *  ┌─ SOUTH ─────────────────────────────────────────────────────────────────┐
- *  │  Summary: READ N  WRITE N  @Tx N  Entities: A, B, C                     │
- *  └─────────────────────────────────────────────────────────────────────────┘
- * </pre>
- *
- * <p>Text export is delegated to {@link TextExportBuilder} (SRP).
+ * <p>Long-lived fields ({@link #lastResult}, {@link #lastEndpoint}) store
+ * PSI-stripped copies so live {@code PsiMethod} references are not held across
+ * read actions.  Navigation re-resolves PSI lazily inside a fresh read action.
  */
 public class CallChainPanel extends JPanel {
 
     private final Project project;
 
     private final JComboBox<EndpointInfo> endpointCombo;
+    private final JTextField             endpointSearchField;
     private final JTree                  callChainTree;
     private final DefaultTreeModel       treeModel;
     private final JLabel                 statusLabel;
     private final JLabel                 summaryLabel;
     private final JToggleButton          reposOnlyToggle;
 
-    /** Last result kept for clipboard export. */
+    /** Full unfiltered endpoint list — source of truth for {@link #filterEndpoints()}. */
+    private List<EndpointInfo> allEndpoints = List.of();
+
+    /** PSI-stripped — safe to hold across read actions. */
     private List<CallChainNode> lastResult   = List.of();
-    private EndpointInfo        lastEndpoint = null;
+    @Nullable private EndpointInfo lastEndpoint = null;
 
     // =========================================================================
     // Public API
     // =========================================================================
 
     /**
-     * Programmatically pushes a pre-computed result into the panel (called from
-     * {@link com.repoinspector.actions.TraceRepositoryCallsAction}).
+     * Programmatically pushes a pre-computed result into the panel.
      * Must be called on the Event Dispatch Thread.
      */
-    public void showResult(EndpointInfo endpoint, List<CallChainNode> nodes) {
+    public void showResult(@NotNull EndpointInfo endpoint, @NotNull List<CallChainNode> nodes) {
         for (int i = 0; i < endpointCombo.getItemCount(); i++) {
             EndpointInfo item = endpointCombo.getItemAt(i);
             if (item.controllerName().equals(endpoint.controllerName())
@@ -81,17 +78,24 @@ public class CallChainPanel extends JPanel {
     // Construction
     // =========================================================================
 
-    public CallChainPanel(Project project) {
+    public CallChainPanel(@NotNull Project project) {
         this.project = project;
         setLayout(new BorderLayout());
 
-        // ── Endpoint combo ────────────────────────────────────────────────────
         endpointCombo = new JComboBox<>();
         endpointCombo.setRenderer(new EndpointComboRenderer());
         endpointCombo.setPrototypeDisplayValue(
-                new EndpointInfo("GET", "/placeholder/path", "Controller", "method()", null));
+                new EndpointInfo("GET", "/placeholder/path", "Controller", "method()", null, null));
 
-        // ── Primary action buttons ────────────────────────────────────────────
+        endpointSearchField = new JTextField(16);
+        endpointSearchField.putClientProperty("JTextField.placeholderText", "Filter endpoints\u2026");
+        endpointSearchField.setToolTipText("Filter by HTTP verb (e.g. POST) or path (e.g. /users)");
+        endpointSearchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e)  { filterEndpoints(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e)  { filterEndpoints(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { filterEndpoints(); }
+        });
+
         JButton traceButton   = UITheme.button("Trace");
         JButton refreshButton = UITheme.button("\u21BB  Refresh");
         JButton copyButton    = UITheme.button("\u2398  Copy");
@@ -104,13 +108,14 @@ public class CallChainPanel extends JPanel {
         copyButton.addActionListener(e    -> copyAsText());
 
         JPanel primaryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        primaryRow.add(new JLabel("Filter:"));
+        primaryRow.add(endpointSearchField);
         primaryRow.add(new JLabel("Endpoint:"));
         primaryRow.add(endpointCombo);
         primaryRow.add(traceButton);
         primaryRow.add(refreshButton);
         primaryRow.add(copyButton);
 
-        // ── Secondary action buttons ──────────────────────────────────────────
         JButton expandAllBtn   = UITheme.button("\u229E  Expand All");
         JButton collapseAllBtn = UITheme.button("\u229F  Collapse All");
         JButton clearCacheBtn  = UITheme.button("\u2715  Clear Cache");
@@ -138,7 +143,6 @@ public class CallChainPanel extends JPanel {
         secondaryRow.add(clearCacheBtn);
         secondaryRow.add(reposOnlyToggle);
 
-        // ── Status label ──────────────────────────────────────────────────────
         statusLabel = new JLabel("  Select an endpoint and click Trace.");
         statusLabel.setFont(statusLabel.getFont().deriveFont(11f));
         statusLabel.setForeground(UITheme.MUTED);
@@ -151,7 +155,6 @@ public class CallChainPanel extends JPanel {
         north.add(statusLabel,  BorderLayout.SOUTH);
         add(north, BorderLayout.NORTH);
 
-        // ── Tree ──────────────────────────────────────────────────────────────
         DefaultMutableTreeNode root = new DefaultMutableTreeNode("No endpoint selected");
         treeModel     = new DefaultTreeModel(root);
         callChainTree = new JTree(treeModel);
@@ -159,7 +162,6 @@ public class CallChainPanel extends JPanel {
         callChainTree.setRootVisible(true);
         callChainTree.setShowsRootHandles(true);
         callChainTree.setRowHeight(22);
-
         callChainTree.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) navigateToSelected();
@@ -168,7 +170,6 @@ public class CallChainPanel extends JPanel {
 
         add(new JBScrollPane(callChainTree), BorderLayout.CENTER);
 
-        // ── Summary bar (SOUTH) ───────────────────────────────────────────────
         summaryLabel = new JLabel("  No trace run yet.");
         summaryLabel.setFont(summaryLabel.getFont().deriveFont(11f));
         summaryLabel.setForeground(UITheme.MUTED);
@@ -181,6 +182,45 @@ public class CallChainPanel extends JPanel {
     }
 
     // =========================================================================
+    // Endpoint filtering
+    // =========================================================================
+
+    private void filterEndpoints() {
+        String query = endpointSearchField.getText().trim().toLowerCase(java.util.Locale.ROOT);
+        EndpointInfo prev = (EndpointInfo) endpointCombo.getSelectedItem();
+
+        endpointCombo.removeAllItems();
+        allEndpoints.stream()
+                .filter(ep -> query.isEmpty()
+                        || ep.httpMethod().toLowerCase(java.util.Locale.ROOT).contains(query)
+                        || ep.path().toLowerCase(java.util.Locale.ROOT).contains(query))
+                .forEach(endpointCombo::addItem);
+
+        if (prev != null) {
+            for (int i = 0; i < endpointCombo.getItemCount(); i++) {
+                EndpointInfo item = endpointCombo.getItemAt(i);
+                if (item.controllerName().equals(prev.controllerName())
+                        && item.methodSignature().equals(prev.methodSignature())) {
+                    endpointCombo.setSelectedIndex(i);
+                    break;
+                }
+            }
+        }
+
+        if (!allEndpoints.isEmpty()) {
+            int shown = endpointCombo.getItemCount();
+            setStatus(shown + " of " + allEndpoints.size() + " endpoint(s) — select one and click Trace.",
+                    UITheme.MUTED);
+        }
+
+        if (!query.isEmpty() && endpointCombo.getItemCount() > 0) {
+            SwingUtilities.invokeLater(endpointCombo::showPopup);
+        } else if (query.isEmpty()) {
+            endpointCombo.hidePopup();
+        }
+    }
+
+    // =========================================================================
     // Endpoint loading
     // =========================================================================
 
@@ -188,14 +228,13 @@ public class CallChainPanel extends JPanel {
         setStatus("Waiting for IDE indexing\u2026", UITheme.MUTED);
         DumbService.getInstance(project).runWhenSmart(() ->
             ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                List<EndpointInfo> endpoints = project.getService(EndpointAnalysisService.class).findAllEndpoints();
+                List<EndpointInfo> endpoints =
+                        project.getService(EndpointAnalysisService.class).findAllEndpoints();
                 SwingUtilities.invokeLater(() -> {
-                    endpointCombo.removeAllItems();
-                    endpoints.forEach(endpointCombo::addItem);
+                    allEndpoints = List.copyOf(endpoints);
+                    filterEndpoints();
                     if (endpoints.isEmpty()) {
                         setStatus("No Spring endpoints found in project.", UITheme.WARNING);
-                    } else {
-                        setStatus(endpoints.size() + " endpoint(s) found — select one and click Trace.", UITheme.MUTED);
                     }
                 });
             })
@@ -215,7 +254,8 @@ public class CallChainPanel extends JPanel {
 
         setStatus("Analyzing call chain\u2026", UITheme.ACCENT);
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            List<CallChainNode> nodes = project.getService(CallChainService.class).getOrAnalyze(selected);
+            List<CallChainNode> nodes =
+                    project.getService(CallChainService.class).getOrAnalyze(selected);
             SwingUtilities.invokeLater(() -> renderResult(selected, nodes, false));
         });
     }
@@ -225,39 +265,16 @@ public class CallChainPanel extends JPanel {
     // =========================================================================
 
     private void renderResult(EndpointInfo endpoint, List<CallChainNode> nodes, boolean fromCache) {
-        lastResult   = nodes;
-        lastEndpoint = endpoint;
+        // Strip PSI before storing — live PsiMethod must not be held across read actions.
+        lastResult   = nodes.stream().map(CallChainNode::withoutPsi).toList();
+        lastEndpoint = endpoint.withoutPsi();
 
         boolean reposOnly = reposOnlyToggle.isSelected();
         List<CallChainNode> visible = reposOnly
                 ? nodes.stream().filter(n -> n.depth() == 0 || n.isRepository()).toList()
                 : nodes;
 
-        DefaultMutableTreeNode root = new DefaultMutableTreeNode(endpoint);
-
-        List<DefaultMutableTreeNode> depthStack = new ArrayList<>();
-        depthStack.add(root);
-
-        for (CallChainNode node : visible) {
-            if (node.depth() == 0) continue;
-
-            DefaultMutableTreeNode treeNode = new DefaultMutableTreeNode(node);
-            int parentDepth = node.depth() - 1;
-
-            while (depthStack.size() <= node.depth()) {
-                depthStack.add(null);
-            }
-
-            DefaultMutableTreeNode parent = (parentDepth < depthStack.size())
-                    ? depthStack.get(parentDepth)
-                    : root;
-            if (parent == null) parent = root;
-
-            parent.add(treeNode);
-            depthStack.set(node.depth(), treeNode);
-        }
-
-        treeModel.setRoot(root);
+        treeModel.setRoot(buildTree(endpoint, visible));
         expandAll();
 
         long repoCount = nodes.stream().filter(CallChainNode::isRepository).count();
@@ -268,13 +285,31 @@ public class CallChainPanel extends JPanel {
         updateSummary(nodes);
     }
 
+    private static DefaultMutableTreeNode buildTree(EndpointInfo endpoint, List<CallChainNode> visible) {
+        DefaultMutableTreeNode root = new DefaultMutableTreeNode(endpoint);
+        // Use a map keyed by depth so filtered nodes don't leave null gaps.
+        Map<Integer, DefaultMutableTreeNode> byDepth = new HashMap<>();
+        byDepth.put(0, root);
+
+        for (CallChainNode node : visible) {
+            if (node.depth() == 0) continue;
+            DefaultMutableTreeNode treeNode = new DefaultMutableTreeNode(node);
+            DefaultMutableTreeNode parent   = byDepth.getOrDefault(node.depth() - 1, root);
+            parent.add(treeNode);
+            byDepth.put(node.depth(), treeNode);
+        }
+        return root;
+    }
+
     // =========================================================================
     // Summary bar
     // =========================================================================
 
     private void updateSummary(List<CallChainNode> nodes) {
-        long reads  = nodes.stream().filter(n -> n.isRepository() && n.operationType() == OperationType.READ).count();
-        long writes = nodes.stream().filter(n -> n.isRepository() && n.operationType() == OperationType.WRITE).count();
+        long reads  = nodes.stream()
+                .filter(n -> n.isRepository() && n.operationType() == OperationType.READ).count();
+        long writes = nodes.stream()
+                .filter(n -> n.isRepository() && n.operationType() == OperationType.WRITE).count();
         long txs    = nodes.stream().filter(CallChainNode::isTransactional).count();
 
         Set<String> entities = new LinkedHashSet<>();
@@ -284,7 +319,6 @@ public class CallChainPanel extends JPanel {
              .forEach(entities::add);
 
         String entityText = entities.isEmpty() ? "none" : String.join(", ", entities);
-
         String html = "<html>"
                 + "<font color='" + UITheme.toHex(UITheme.SUCCESS) + "'><b>READ&nbsp;" + reads + "</b></font>"
                 + "&nbsp;&nbsp;"
@@ -308,7 +342,6 @@ public class CallChainPanel extends JPanel {
     }
 
     private void collapseAll() {
-        // Collapse from the bottom up so parent rows are not renumbered mid-loop
         for (int i = callChainTree.getRowCount() - 1; i >= 1; i--) {
             callChainTree.collapseRow(i);
         }
@@ -329,7 +362,7 @@ public class CallChainPanel extends JPanel {
     }
 
     // =========================================================================
-    // Navigation
+    // Navigation — resolves PSI lazily if the node was loaded from the cache
     // =========================================================================
 
     private void navigateToSelected() {
@@ -339,17 +372,42 @@ public class CallChainPanel extends JPanel {
         DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
         Object userObj = node.getUserObject();
 
-        if (userObj instanceof CallChainNode chainNode
-                && chainNode.psiMethod() != null
-                && !chainNode.isDynamic()) {
-            chainNode.psiMethod().navigate(true);
-        } else if (userObj instanceof EndpointInfo ep && ep.psiMethod() != null) {
-            ep.psiMethod().navigate(true);
+        if (userObj instanceof CallChainNode chainNode && !chainNode.isDynamic()) {
+            if (chainNode.psiMethod() != null && chainNode.psiMethod().isValid()) {
+                chainNode.psiMethod().navigate(true);
+            } else if (chainNode.qualifiedClassName() != null) {
+                resolveAndNavigate(chainNode.qualifiedClassName(), chainNode.methodSignature());
+            }
+        } else if (userObj instanceof EndpointInfo ep) {
+            if (ep.psiMethod() != null && ep.psiMethod().isValid()) {
+                ep.psiMethod().navigate(true);
+            } else if (ep.qualifiedControllerName() != null) {
+                resolveAndNavigate(ep.qualifiedControllerName(), ep.methodSignature());
+            }
         }
     }
 
+    private void resolveAndNavigate(@NotNull String qualifiedClassName, @NotNull String signature) {
+        ApplicationManager.getApplication().executeOnPooledThread(() ->
+            ApplicationManager.getApplication().runReadAction(() -> {
+                JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
+                PsiClass cls = facade.findClass(qualifiedClassName,
+                        GlobalSearchScope.projectScope(project));
+                if (cls == null) return;
+                ParameterExtractionService svc = ApplicationManager.getApplication()
+                        .getService(ParameterExtractionService.class);
+                for (PsiMethod m : cls.getMethods()) {
+                    if (svc.buildSignature(m).equals(signature)) {
+                        SwingUtilities.invokeLater(() -> m.navigate(true));
+                        return;
+                    }
+                }
+            })
+        );
+    }
+
     // =========================================================================
-    // Clipboard export — delegated to TextExportBuilder (SRP)
+    // Clipboard export
     // =========================================================================
 
     private void copyAsText() {
@@ -357,7 +415,6 @@ public class CallChainPanel extends JPanel {
             setStatus("Nothing to copy \u2014 run a trace first.", UITheme.WARNING);
             return;
         }
-
         String text = TextExportBuilder.build(lastEndpoint, lastResult);
         Toolkit.getDefaultToolkit()
                 .getSystemClipboard()
@@ -372,40 +429,5 @@ public class CallChainPanel extends JPanel {
     private void setStatus(String text, Color color) {
         statusLabel.setText("  " + text);
         statusLabel.setForeground(color);
-    }
-
-    // =========================================================================
-    // Combo renderer — HTTP method colour badges
-    // =========================================================================
-
-    private static final class EndpointComboRenderer extends DefaultListCellRenderer {
-
-        private static final Map<String, Color> HTTP_COLORS = Map.of(
-                "GET",    new Color( 80, 200, 120),   // green
-                "POST",   new Color( 97, 175, 239),   // blue
-                "PUT",    new Color(255, 195,  90),   // amber
-                "DELETE", new Color(255,  70,  70),   // red
-                "PATCH",  new Color(206, 145, 120)    // orange
-        );
-        private static final Color HTTP_DEFAULT = new Color(160, 160, 160);
-
-        @Override
-        public Component getListCellRendererComponent(
-                JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-
-            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-
-            if (value instanceof EndpointInfo ep) {
-                Color methodColor = HTTP_COLORS.getOrDefault(
-                        ep.httpMethod().toUpperCase(), HTTP_DEFAULT);
-                String hex = String.format("#%02x%02x%02x",
-                        methodColor.getRed(), methodColor.getGreen(), methodColor.getBlue());
-                setText("<html><font color='" + hex + "'><b>[" + ep.httpMethod() + "]</b></font>"
-                        + "&nbsp;" + ep.path()
-                        + "&nbsp;<font color='#808080'>[" + ep.controllerName()
-                        + "." + ep.methodSignature() + "]</font></html>");
-            }
-            return this;
-        }
     }
 }

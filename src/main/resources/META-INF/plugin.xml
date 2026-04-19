@@ -68,12 +68,23 @@
     navigation to source. HTTP method badges are colour-coded (GET=green, POST=blue, PUT=amber,
     DELETE=red). Expand All / Collapse All and Clear Cache controls are built in.
     A summary bar counts READ / WRITE / @Transactional calls and unique entity types.
+    <ul>
+      <li><b>Endpoint search</b> — type any HTTP verb or path fragment (e.g. <code>POST</code> or
+          <code>/users</code>) to instantly filter the endpoint dropdown as you type.</li>
+      <li><b>Full API paths</b> — endpoint paths now include the controller-level
+          <code>@RequestMapping</code> prefix so you see the complete URL (e.g.
+          <code>/api/v1/users/{id}</code> instead of <code>/{id}</code>).</li>
+    </ul>
   </li>
   <li>
     <b>Repository usage table</b> — lists all repository methods with call-count badges
     (red = never called, amber = rarely called, green = frequently called).
     Live search filters by repository or method name. A <i>Show Unused Only</i> toggle
     lets you focus on dead code. Export to CSV with one click.
+    <ul>
+      <li><b>Current File filter</b> — open any repository file (e.g. <code>UserRepository.java</code>)
+          and click <i>Current File</i> to instantly scope the table to that repository's methods only.</li>
+    </ul>
   </li>
   <li>
     <b>Zero configuration</b> — the plugin automatically injects <code>-javaagent</code> into
@@ -128,6 +139,37 @@
   ]]></description>
 
   <change-notes><![CDATA[
+<h3>1.0.2 — Repository Filtering &amp; Endpoint Search</h3>
+<ul>
+  <li>
+    <b>Current File filter</b> — new toggle in the Repository Usage tab. Open any repository
+    file (e.g. <code>UserRepository.java</code>) and click <i>Current File</i> to scope the
+    table to that repository's methods instantly. The table auto-populates on panel open so
+    the filter is ready without a manual Refresh.
+  </li>
+  <li>
+    <b>Endpoint search in Call Chain Tracer</b> — live filter field above the endpoint dropdown.
+    Type an HTTP verb (e.g. <code>POST</code>) or a path fragment (e.g. <code>/users</code>)
+    and the dropdown narrows in real time; the matching list opens automatically as you type.
+  </li>
+  <li>
+    <b>Full API path display</b> — endpoint paths now include the controller-level
+    <code>@RequestMapping</code> class prefix. Previously only the method-level path was shown
+    (e.g. <code>/{id}</code>); now the complete URL is shown (e.g. <code>/api/v1/users/{id}</code>).
+  </li>
+  <li>
+    <b>Cleaner endpoint combo display</b> — the endpoint selector now shows only the HTTP verb
+    and path (<code>[GET] /api/users</code>) without the controller class name and method
+    signature, reducing visual noise.
+  </li>
+</ul>
+
+<h3>1.0.1 — Stability &amp; Build Improvements</h3>
+<ul>
+  <li>Enhanced build configuration and random data generation strategies</li>
+  <li>Updated settings and plugin files for improved documentation and versioning</li>
+</ul>
+
 <h3>1.0.0 — Initial Release</h3>
 <ul>
   <li>Run ⌕ | ✎ gutter icon on all Spring Data repository methods</li>
@@ -136,17 +178,14 @@
   <li>Smart parameter form with per-type widgets</li>
   <li>Random data generation with 30+ name-hint rules (email, phone, city, status, UUID, &hellip;)</li>
   <li>Per-field dice buttons + Generate All — fill one or all parameters in one click</li>
-  <li>Pageable / PageRequest support — JSON input deserialized into a real PageRequest with sort parsing;
-      fixes Jackson <code>InvalidDefinitionException</code> on abstract interface</li>
-  <li>Enum resolution against real constants via reflection; falls back to first constant with a log
-      listing all available values — never crashes on an unknown placeholder</li>
-  <li>Call chain tracer — expandable tree with colour-coded HTTP method badges (GET/POST/PUT/DELETE),
-      Expand All / Collapse All, Clear Cache, and a summary bar (READ/WRITE/@Transactional/entities)</li>
+  <li>Pageable / PageRequest support — JSON input deserialized into a real PageRequest with sort parsing</li>
+  <li>Enum resolution against real constants via reflection</li>
+  <li>Call chain tracer — expandable tree with colour-coded HTTP method badges, Expand All / Collapse All, Clear Cache, summary bar</li>
   <li>Repository usage table — live search filter, Show Unused Only toggle, Export CSV</li>
   <li>Automatic run-configuration patching on project open (ProjectActivity, IntelliJ 2024.1+)</li>
   <li>&#9679; Agent Ready / Offline live status indicator in popup header</li>
-  <li>Execution time colour-coded green / amber / red (&#60;100 ms / 100-499 ms / &#8805;500 ms)</li>
-  <li>Colorful, theme-aware UI via unified UITheme palette (JBColor — light &amp; dark themes)</li>
+  <li>Execution time colour-coded green / amber / red</li>
+  <li>Theme-aware UI via unified UITheme palette (JBColor — light &amp; dark themes)</li>
 </ul>
   ]]></change-notes>
 

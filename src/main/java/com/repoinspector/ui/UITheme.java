@@ -49,6 +49,12 @@ public final class UITheme {
     /** Arrow / separator in the header. */
     public static final Color ARROW_COLOR  = jb(128, 138, 150, 128, 138, 150);
 
+    // ── Panel separator line colours ─────────────────────────────────────────
+    // Used as the 1-px matte border between the header bar and the content area.
+    public static final Color SEPARATOR_ERROR  = new JBColor(new Color( 80, 30, 30), new Color(100,  40,  40));
+    public static final Color SEPARATOR_RESULT = new JBColor(new Color( 40, 45, 75), new Color( 50,  55,  90));
+    public static final Color SEPARATOR_SQL    = new JBColor(new Color( 40, 55, 40), new Color( 50,  70,  50));
+
     // ── Call-count badge colours ──────────────────────────────────────────────
     public static final Color COUNT_ZERO = new JBColor(new Color(255, 180, 180), new Color(120,  40,  40));
     public static final Color COUNT_LOW  = new JBColor(new Color(255, 255, 180), new Color(100,  90,  20));

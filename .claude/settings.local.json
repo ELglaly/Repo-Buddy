@@ -34,7 +34,9 @@
       "Bash(./gradlew prepareSandbox --rerun-tasks --stacktrace)",
       "Bash(./gradlew :agent:jar processResources jar)",
       "Bash(xargs grep *)",
-      "Bash(xargs cat *)"
+      "Bash(xargs cat *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(awk -F'|' '{print $2}')"
     ]
   }
 }

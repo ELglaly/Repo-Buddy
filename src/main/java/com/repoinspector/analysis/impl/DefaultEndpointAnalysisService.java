@@ -68,12 +68,16 @@ public final class DefaultEndpointAnalysisService implements EndpointAnalysisSer
                                 ? containingClass.getName() : "Unknown";
 
                         PsiAnnotation annotation   = method.getAnnotation(annotationFqn);
-                        String        path         = extractPath(annotation);
+                        String        methodPath   = extractPath(annotation);
+                        String        classPrefix  = extractClassPath(containingClass);
+                        String        path         = classPrefix.isEmpty() ? methodPath : classPrefix + methodPath;
                         String        resolvedVerb = "REQUEST".equals(httpVerb)
                                 ? extractRequestMethod(annotation) : httpVerb;
                         String        signature    = paramService.buildSignature(method);
 
-                        results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature, method));
+                        String qualifiedName = containingClass.getQualifiedName();
+                        results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature,
+                                qualifiedName, method));
                         return true;
                     });
                 }
@@ -95,6 +99,13 @@ public final class DefaultEndpointAnalysisService implements EndpointAnalysisSer
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
+
+    private static String extractClassPath(@NotNull PsiClass cls) {
+        PsiAnnotation mapping = cls.getAnnotation(SpringAnnotations.REQUEST_MAPPING);
+        if (mapping == null) return "";
+        String path = extractPath(mapping);
+        return "/".equals(path) ? "" : path;
+    }
 
     private static String extractPath(@Nullable PsiAnnotation annotation) {
         if (annotation == null) return "/";
