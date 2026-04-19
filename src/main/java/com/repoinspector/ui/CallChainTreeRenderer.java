@@ -1,5 +1,7 @@
 package com.repoinspector.ui;
 
+import com.intellij.ui.JBColor;
+import com.intellij.util.ui.UIUtil;
 import com.repoinspector.model.CallChainNode;
 import com.repoinspector.model.EndpointInfo;
 import com.repoinspector.model.OperationType;
@@ -13,21 +15,25 @@ import java.awt.*;
  * Custom cell renderer for the call-chain JTree.
  *
  * <ul>
- *   <li>Root (endpoint) node — bold, dark blue</li>
- *   <li>Repository READ leaf  — bold, green foreground</li>
- *   <li>Repository WRITE leaf — bold, orange foreground</li>
- *   <li>Dynamic node          — italic, gray foreground</li>
- *   <li>@Transactional node   — slightly indigo background tint</li>
+ *   <li>Root (endpoint) node — bold, blue (theme-aware)</li>
+ *   <li>Repository READ leaf  — bold, green (theme-aware)</li>
+ *   <li>Repository WRITE leaf — bold, orange (theme-aware)</li>
+ *   <li>Dynamic node          — italic, gray (theme-aware)</li>
+ *   <li>@Transactional node   — soft indigo background tint (theme-aware)</li>
  * </ul>
+ *
+ * All colors use {@link JBColor} so the renderer looks correct in both
+ * IntelliJ Light and Dark themes.
  */
 public class CallChainTreeRenderer extends DefaultTreeCellRenderer {
 
-    private static final Color COLOR_ENDPOINT    = new Color(0, 0, 139);   // dark blue
-    private static final Color COLOR_READ        = new Color(0, 128, 0);   // green
-    private static final Color COLOR_WRITE       = new Color(200, 80, 0);  // orange
-    private static final Color COLOR_UNKNOWN_REPO= new Color(100, 0, 150); // purple
-    private static final Color COLOR_DYNAMIC     = Color.GRAY;
-    private static final Color BG_TRANSACTIONAL  = new Color(235, 235, 255); // soft indigo
+    // Light variant / Dark variant
+    private static final Color COLOR_ENDPOINT     = new JBColor(new Color(0,   0,  139), new Color(106, 176, 245));
+    private static final Color COLOR_READ         = new JBColor(new Color(0,  128,   0), new Color( 80, 200, 120));
+    private static final Color COLOR_WRITE        = new JBColor(new Color(200,  80,   0), new Color(255, 140,  60));
+    private static final Color COLOR_UNKNOWN_REPO = new JBColor(new Color(100,   0, 150), new Color(190, 130, 240));
+    private static final Color COLOR_DYNAMIC      = JBColor.GRAY;
+    private static final Color BG_TRANSACTIONAL   = new JBColor(new Color(235, 235, 255), new Color( 40,  40,  80));
 
     @Override
     public Component getTreeCellRendererComponent(
@@ -45,21 +51,20 @@ public class CallChainTreeRenderer extends DefaultTreeCellRenderer {
         if (userObject instanceof EndpointInfo endpoint) {
             renderEndpoint(endpoint);
         } else if (userObject instanceof CallChainNode node) {
-            renderCallChainNode(node, sel);
+            renderCallChainNode(node, sel, hasFocus);
         }
 
         return this;
     }
 
     private void renderEndpoint(EndpointInfo endpoint) {
-        Font bold = getFont().deriveFont(Font.BOLD);
-        setFont(bold);
+        setFont(getFont().deriveFont(Font.BOLD));
         setForeground(COLOR_ENDPOINT);
         setText(endpoint.toString());
         setIcon(null);
     }
 
-    private void renderCallChainNode(CallChainNode node, boolean selected) {
+    private void renderCallChainNode(CallChainNode node, boolean selected, boolean hasFocus) {
         setIcon(null);
 
         if (node.isDynamic()) {
@@ -80,7 +85,10 @@ public class CallChainTreeRenderer extends DefaultTreeCellRenderer {
             }
         } else {
             setFont(getFont().deriveFont(Font.PLAIN));
-            setForeground(selected ? Color.WHITE : Color.BLACK);
+            // Use theme-aware foreground — never raw Color.BLACK or Color.WHITE
+            setForeground(selected
+                    ? UIUtil.getTreeSelectionForeground(hasFocus)
+                    : UIUtil.getTreeForeground());
         }
 
         setText(node.displayLabel());

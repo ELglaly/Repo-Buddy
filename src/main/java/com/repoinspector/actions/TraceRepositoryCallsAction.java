@@ -7,8 +7,10 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowManager;
+import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiMethod;
@@ -23,6 +25,7 @@ import com.repoinspector.model.EndpointInfo;
 import com.repoinspector.runner.service.api.ParameterExtractionService;
 import com.repoinspector.ui.CallChainPanel;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.List;
@@ -32,19 +35,23 @@ import java.util.Optional;
  * Editor right-click action: "Trace Repository Calls for This API".
  *
  * <p>Only enabled when the caret is inside a Spring mapping-annotated method.
- * When triggered it opens the "Repo Inspector" tool window, selects the
- * "Call Chain Tracer" tab, pre-selects the current endpoint in the combo, and
- * kicks off the trace automatically.
+ * When triggered it opens the "RepoBuddy" tool window, selects the
+ * "Call Chain Tracer" tab, and kicks off the trace automatically.
  */
 public class TraceRepositoryCallsAction extends AnAction {
 
     private static final Logger LOG = Logger.getInstance(TraceRepositoryCallsAction.class);
 
+    /** Data extracted from PSI inside a single read action to avoid repeated locking. */
+    private record EndpointData(String signature, String controllerClass) {}
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        PsiMethod method = getMethodUnderCaret(e);
-        boolean enabled = method != null && isEndpointMethod(method);
+        boolean enabled = ApplicationManager.getApplication().runReadAction(
+                (Computable<Boolean>) () -> {
+                    PsiMethod method = getMethodUnderCaret(e);
+                    return method != null && isEndpointMethod(method);
+                });
         e.getPresentation().setEnabledAndVisible(enabled);
     }
 
@@ -53,53 +60,54 @@ public class TraceRepositoryCallsAction extends AnAction {
         Project project = e.getProject();
         if (project == null) return;
 
-        PsiMethod method = getMethodUnderCaret(e);
-        if (method == null || !isEndpointMethod(method)) return;
+        // All PSI access in one read action at the start.
+        EndpointData data = ApplicationManager.getApplication().runReadAction(
+                (Computable<EndpointData>) () -> {
+                    PsiMethod method = getMethodUnderCaret(e);
+                    if (method == null || !isEndpointMethod(method) || !method.isValid()) return null;
+                    ParameterExtractionService paramService = ApplicationManager.getApplication()
+                            .getService(ParameterExtractionService.class);
+                    String sig = paramService.buildSignature(method);
+                    PsiClass cls = method.getContainingClass();
+                    String className = (cls != null && cls.getName() != null) ? cls.getName() : "";
+                    return new EndpointData(sig, className);
+                });
 
-        // Open the tool window
-        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Repo Inspector");
+        if (data == null) return;
+
+        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("RepoBuddy");
         if (toolWindow == null) return;
         toolWindow.show();
 
-        // Switch to the "Call Chain Tracer" tab (index 1)
         ContentManager cm = toolWindow.getContentManager();
         if (cm.getContentCount() > 1) {
             cm.setSelectedContent(cm.getContent(1));
         }
 
-        // Find the matching EndpointInfo and trigger the trace
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             EndpointAnalysisService endpointService = project.getService(EndpointAnalysisService.class);
-            ParameterExtractionService paramService = ApplicationManager.getApplication().getService(ParameterExtractionService.class);
             List<EndpointInfo> endpoints = endpointService.findAllEndpoints();
-            String targetSig = paramService.buildSignature(method);
-            String targetClass = method.getContainingClass() != null
-                    ? method.getContainingClass().getName() : "";
 
             Optional<EndpointInfo> matchOpt = endpoints.stream()
-                    .filter(ep -> ep.methodSignature().equals(targetSig)
-                            && ep.controllerName().equals(targetClass))
+                    .filter(ep -> ep.methodSignature().equals(data.signature())
+                            && ep.controllerName().equals(data.controllerClass()))
                     .findFirst();
 
             if (matchOpt.isEmpty()) {
-                LOG.info("TraceRepositoryCallsAction: no matching endpoint found for " + targetClass + "." + targetSig);
+                LOG.info("TraceRepositoryCallsAction: no matching endpoint found for "
+                        + data.controllerClass() + "." + data.signature());
                 return;
             }
 
             EndpointInfo match = matchOpt.get();
-
             List<CallChainNode> result = project.getService(CallChainService.class).getOrAnalyze(match);
 
-            final EndpointInfo finalMatch = match;
-            final List<CallChainNode> finalResult = result;
-
             SwingUtilities.invokeLater(() -> {
-                // Locate the CallChainPanel in the tool window and push the result
                 if (cm.getContentCount() > 1) {
                     Content chainContent = cm.getContent(1);
                     if (chainContent != null
                             && chainContent.getComponent() instanceof CallChainPanel panel) {
-                        panel.showResult(finalMatch, finalResult);
+                        panel.showResult(match, result);
                     }
                 }
             });
@@ -110,11 +118,11 @@ public class TraceRepositoryCallsAction extends AnAction {
     // Helpers
     // -------------------------------------------------------------------------
 
+    @Nullable
     private static PsiMethod getMethodUnderCaret(AnActionEvent e) {
         Editor editor = e.getData(CommonDataKeys.EDITOR);
         PsiFile file = e.getData(CommonDataKeys.PSI_FILE);
         if (editor == null || file == null) return null;
-
         int offset = editor.getCaretModel().getOffset();
         PsiElement element = file.findElementAt(offset);
         return PsiTreeUtil.getParentOfType(element, PsiMethod.class);
@@ -122,9 +130,7 @@ public class TraceRepositoryCallsAction extends AnAction {
 
     private static boolean isEndpointMethod(PsiMethod method) {
         for (String fqn : SpringAnnotations.HTTP_MAPPING_FQNS) {
-            if (method.hasAnnotation(fqn)) {
-                return true;
-            }
+            if (method.hasAnnotation(fqn)) return true;
         }
         return false;
     }

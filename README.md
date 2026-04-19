@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=gradle)
-![Version](https://img.shields.io/badge/version-3.0--SNAPSHOT-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.2-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![IntelliJ](https://img.shields.io/badge/IntelliJ-2024.1%2B-orange?style=for-the-badge&logo=intellij-idea)
 ![Java](https://img.shields.io/badge/Java-17%2B-red?style=for-the-badge&logo=openjdk)
@@ -69,6 +69,9 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **HTTP method badges** colour-coded (GET = green, POST = blue, PUT = amber, DELETE = red)
 - **Summary bar** counts READ / WRITE / `@Transactional` calls and unique entity types touched
 - Expand All / Collapse All / Clear Cache controls built in
+- **Endpoint search** — type any HTTP verb (`POST`, `GET`) or path fragment (`/users`, `/login`) to filter the endpoint dropdown live as you type; the list opens automatically with matching results
+- **Full API paths** — endpoint paths now include the controller-level `@RequestMapping` prefix so you see the complete URL (e.g. `/api/v1/users/{id}` instead of `/{id}`)
+- **Clean endpoint display** — the endpoint selector shows only `[VERB] /path` without the controller class name and method signature
 
    <img width="1640" height="605" alt="Screenshot 2026-04-16 092434" src="https://github.com/user-attachments/assets/c8eac4ab-f88c-4f9f-b4ce-431fee92c621" />
 
@@ -78,7 +81,9 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - Lists **all repository methods** with call-count badges (red = never called, amber = rarely called, green = frequently called)
 - **Live search** filters by repository or method name
 - **Show Unused Only** toggle to focus instantly on dead code
+- **Current File filter** — open any repository file (e.g. `UserRepository.java`) and click **Current File** to scope the table to that repository's methods instantly; no manual search needed
 - **Export to CSV** with one click
+- Table auto-populates on panel open — no manual Refresh required on startup
 <img width="1645" height="667" alt="Screenshot 2026-04-16 092235" src="https://github.com/user-attachments/assets/34bb1f53-c629-4976-8f9b-03c8942e7ac4" />
 
 
@@ -190,11 +195,8 @@ RepoBuddy/
 │       ├── analysis/               # Static analysis services
 │       │   ├── api/                # Service interfaces
 │       │   ├── impl/               # Default implementations
-│       │   ├── CallChainAnalyzer   # Endpoint → repository traversal
-│       │   ├── CallChainCache      # Result caching
 │       │   ├── CallSiteAnalyzer    # Call site resolution
 │       │   ├── EndpointFinder      # Spring MVC endpoint discovery
-│       │   ├── RepositoryFinder    # Spring Data repo discovery
 │       │   └── RepositoryOperationClassifier
 │       ├── constants/              # Spring annotation & SQL keyword constants
 │       ├── gutter/                 # Gutter icon marker provider
@@ -244,6 +246,24 @@ IntelliJ Plugin                          Spring Boot App (your app)
 ```
 
 The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` and extracted to the system temp directory at runtime — no external download required.
+
+---
+
+## Changelog
+
+### 1.0.2
+- **Current File filter** in Repository Usage — scope the table to the repository file you have open with one click
+- **Endpoint search** in Call Chain Tracer — live filter by HTTP verb or path fragment; dropdown opens automatically as you type
+- **Full API paths** — controller-level `@RequestMapping` prefix is now included in all endpoint paths
+- **Cleaner endpoint display** — combo box shows only `[VERB] /path`, no controller name or method signature
+- Repository Usage table auto-populates on panel open
+
+### 1.0.1
+- Enhanced build configuration and random data generation strategies
+- Updated settings and plugin files for improved documentation and versioning
+
+### 1.0.0
+- Initial release — see [Features](#-features) for the full list
 
 ---
 

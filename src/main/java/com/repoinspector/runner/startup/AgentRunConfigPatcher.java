@@ -6,6 +6,7 @@ import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.ProjectActivity;
@@ -34,6 +35,8 @@ import java.util.HexFormat;
  * the new version is written to a fresh path.
  */
 public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
+
+    private static final Logger LOG = Logger.getInstance(AgentRunConfigPatcher.class);
 
     /** Resource path inside the plugin JAR. */
     private static final String AGENT_RESOURCE = "/agent/repoBuddy-agent.jar";
@@ -123,6 +126,7 @@ public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
             Files.write(dest, jarBytes);
             return dest;
         } catch (Exception e) {
+            LOG.warn("RepoBuddy: failed to write agent JAR to " + dest, e);
             return null;
         }
     }
@@ -177,7 +181,7 @@ public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
                 }
             }
         } catch (Exception e) {
-            // Could not locate the agent JAR in the build output; caller will show a warning.
+            LOG.warn("RepoBuddy: dev-mode agent JAR fallback search failed", e);
         }
         return null;
     }

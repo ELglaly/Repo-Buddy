@@ -73,13 +73,17 @@ public final class EndpointFinder {
                                 ? containingClass.getName() : "Unknown";
 
                         PsiAnnotation annotation = method.getAnnotation(annotationFqn);
-                        String path = extractPath(annotation);
+                        String methodPath   = extractPath(annotation);
+                        String classPrefix  = extractClassPath(containingClass);
+                        String path         = classPrefix.isEmpty() ? methodPath : classPrefix + methodPath;
                         String resolvedVerb = "REQUEST".equals(httpVerb)
                                 ? extractRequestMethod(annotation) : httpVerb;
 
                         String signature = CallSiteAnalyzer.buildSignature(method);
 
-                        results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature, method));
+                        String qualifiedName = containingClass.getQualifiedName();
+                        results.add(new EndpointInfo(resolvedVerb, path, controllerName, signature,
+                                qualifiedName, method));
                         return true; // continue forEach
                     });
                 }
@@ -90,6 +94,13 @@ public final class EndpointFinder {
             new EmptyProgressIndicator()
         );
         return holder.get();
+    }
+
+    private static String extractClassPath(PsiClass cls) {
+        PsiAnnotation mapping = cls.getAnnotation(SpringAnnotations.REQUEST_MAPPING);
+        if (mapping == null) return "";
+        String path = extractPath(mapping);
+        return "/".equals(path) ? "" : path;
     }
 
     /**

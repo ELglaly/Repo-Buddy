@@ -32,7 +32,7 @@ import java.awt.datatransfer.StringSelection;
 class ResultPanel extends JPanel {
 
     private static final Color HEADER_BG     = UITheme.RESULT_BG.darker();
-    private static final Color SEPARATOR_CLR = new Color(40, 45, 75);
+    private static final Color SEPARATOR_CLR = UITheme.SEPARATOR_RESULT;
     private static final Gson  PRETTY_GSON   = new GsonBuilder().setPrettyPrinting().create();
 
     private final JTextArea textArea;

@@ -39,7 +39,7 @@ class SqlLogPanel extends JPanel {
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
     private static final Color HEADER_BG     = UITheme.SQL_BG.darker();
-    private static final Color SEPARATOR_CLR = new Color(40, 55, 40);
+    private static final Color SEPARATOR_CLR = UITheme.SEPARATOR_SQL;
 
 
     private final JTextPane textPane;
