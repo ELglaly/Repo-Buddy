@@ -6,7 +6,6 @@ import com.repoinspector.runner.service.ParameterTypeClassifier;
 import com.repoinspector.ui.UITheme;
 
 import javax.swing.*;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,27 +13,23 @@ import java.util.List;
 /**
  * Dynamically generates input fields for a repository method's parameters.
  *
- * <p>Each parameter row has three columns:
+ * <p>Each parameter is rendered as a vertical "param-row" card:
  * <ol>
- *   <li>Name label (bold) + colour-coded type badge</li>
- *   <li>Input widget (text field, checkbox, or JSON text area)</li>
- *   <li>Per-field  🎲  button — generates a type-aware random value for that field only</li>
+ *   <li>Label row: bold name + colour-coded type badge + hint text</li>
+ *   <li>Full-width input widget below</li>
+ *   <li>Per-field "rand" button at right of label row</li>
  * </ol>
- *
- * <p>A <b>🎲 Generate All</b> button above the grid fills every field at once.
  *
  * <p>Type-to-widget mapping:
  * <ul>
  *   <li>{@code BOOLEAN}  → {@link JCheckBox}</li>
- *   <li>{@code NUMBER}   → {@link JTextField} (integer hint)</li>
- *   <li>{@code DECIMAL}  → {@link JTextField} (decimal hint)</li>
+ *   <li>{@code JSON}     → multi-line {@link JTextArea}</li>
+ *   <li>{@code NUMBER}   → {@link JTextField}</li>
+ *   <li>{@code DECIMAL}  → {@link JTextField}</li>
  *   <li>{@code TEXT}     → {@link JTextField}</li>
- *   <li>{@code JSON}     → multi-line {@link JTextArea} with monospace font</li>
  * </ul>
  */
 class ParameterFormPanel extends JPanel {
-
-    private static final String DICE = "\uD83C\uDFB2";   // 🎲
 
     private final List<ParameterDef> params;
     private final List<JComponent>   inputs = new ArrayList<>();
@@ -55,105 +50,170 @@ class ParameterFormPanel extends JPanel {
         }
 
         setLayout(new BorderLayout(0, 0));
+        setBackground(UITheme.PANEL);
 
         // ── Generate-All toolbar ──────────────────────────────────────────────
-        JButton generateAllButton = UITheme.button(DICE + "  Generate All");
-        generateAllButton.setFont(generateAllButton.getFont().deriveFont(Font.BOLD, 11f));
+        JButton generateAllButton = UITheme.button("rand all");
+        generateAllButton.setFont(UITheme.UI_SM.deriveFont(Font.BOLD));
         generateAllButton.setForeground(UITheme.ACCENT);
         generateAllButton.setToolTipText("Fill all fields with type-aware random sample data");
         generateAllButton.addActionListener(e -> fillAllRandom());
 
         JPanel topBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        topBar.setBackground(UITheme.TOOLBAR);
+        topBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UITheme.BORDER_SUB));
         topBar.add(generateAllButton);
         add(topBar, BorderLayout.NORTH);
 
-        // ── Parameter grid ────────────────────────────────────────────────────
-        JPanel grid = new JPanel(new GridBagLayout());
-        grid.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(UITheme.ACCENT.darker(), 1),
-                " Parameters ",
-                TitledBorder.LEFT,
-                TitledBorder.TOP,
-                new Font(Font.SANS_SERIF, Font.BOLD, 11),
-                UITheme.ACCENT));
-
-        GridBagConstraints gbc = baseConstraints();
+        // ── Parameter rows ────────────────────────────────────────────────────
+        JPanel rows = new JPanel();
+        rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
+        rows.setBackground(UITheme.PANEL);
+        rows.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
 
         for (int i = 0; i < params.size(); i++) {
             ParameterDef param = params.get(i);
             final int idx = i;
 
-            // Col 0: label + type badge
-            gbc.gridx = 0; gbc.gridy = i;
-            gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
-            grid.add(buildParamLabel(param), gbc);
-
-            // Col 1: input widget
-            gbc.gridx = 1;
-            gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0;
             JComponent input = createInput(param);
             inputs.add(input);
-            grid.add(input instanceof JTextArea ? scrollWrap((JTextArea) input) : input, gbc);
 
-            // Col 2: per-field 🎲 button
-            gbc.gridx = 2;
-            gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
-            JButton diceBtn = buildDiceButton(param, idx);
-            grid.add(diceBtn, gbc);
+            // Label row: name + type badge + hint + spacer + rand button
+            JLabel nameLabel = new JLabel(param.name());
+            nameLabel.setFont(UITheme.UI.deriveFont(Font.BOLD, 12f));
+            nameLabel.setForeground(UITheme.INK);
+
+            JLabel typeBadge = buildTypeBadge(param);
+            JLabel hintLabel = buildHintLabel(param);
+
+            JButton randBtn = UITheme.iconButton("rand");
+            randBtn.setFont(UITheme.UI_SM);
+            randBtn.setForeground(UITheme.MUTED);
+            randBtn.setToolTipText("Generate random " + param.typeName());
+            randBtn.addActionListener(e -> fillOne(idx));
+
+            JPanel labelRow = new JPanel();
+            labelRow.setLayout(new BoxLayout(labelRow, BoxLayout.X_AXIS));
+            labelRow.setOpaque(false);
+            labelRow.add(nameLabel);
+            labelRow.add(Box.createHorizontalStrut(6));
+            labelRow.add(typeBadge);
+            labelRow.add(Box.createHorizontalStrut(6));
+            labelRow.add(hintLabel);
+            labelRow.add(Box.createHorizontalGlue());
+            labelRow.add(randBtn);
+
+            // Input wrapper
+            JComponent inputWidget = input instanceof JTextArea
+                    ? new JScrollPane(input) : input;
+            if (input instanceof JTextArea) {
+                inputWidget.setPreferredSize(new Dimension(Integer.MAX_VALUE, 80));
+                inputWidget.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+            }
+            if (input instanceof JTextField tf) {
+                tf.setFont(UITheme.MONO_XS.deriveFont(12f));
+                tf.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(UITheme.BORDER_SUB, 1),
+                        BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+                tf.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+            }
+
+            // Param-row card
+            JPanel row = new JPanel(new BorderLayout(0, 4));
+            row.setOpaque(false);
+            row.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, 0, 1, 0, UITheme.BORDER_SUB),
+                    BorderFactory.createEmptyBorder(10, 14, 10, 14)));
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+            row.add(labelRow,     BorderLayout.NORTH);
+            row.add(inputWidget,  BorderLayout.CENTER);
+
+            rows.add(row);
         }
 
-        // Vertical filler — pins the form rows to the top
-        gbc.gridx = 0; gbc.gridy = params.size();
-        gbc.gridwidth = 3;
-        gbc.fill = GridBagConstraints.BOTH; gbc.weighty = 1.0;
-        grid.add(new JPanel(), gbc);
+        // Vertical filler
+        JPanel filler = new JPanel();
+        filler.setOpaque(false);
+        rows.add(filler);
 
-        add(grid, BorderLayout.CENTER);
+        add(rows, BorderLayout.CENTER);
     }
 
-    /** Centered empty-state message for methods with no parameters. */
     private void buildEmptyState() {
         setLayout(new BorderLayout());
         JPanel center = new JPanel(new GridBagLayout());
+        center.setBackground(UITheme.PANEL);
         JLabel msg = new JLabel(
                 "<html><center>"
                 + "<b style='font-size:13pt'>No parameters required</b><br><br>"
                 + "<font color='" + UITheme.toHex(UITheme.MUTED) + "'>"
                 + "Click  <b>Run \u25B6</b>  to execute this method directly."
-                + "</font>"
-                + "</center></html>");
+                + "</font></center></html>");
         msg.setHorizontalAlignment(SwingConstants.CENTER);
         center.add(msg);
         add(center, BorderLayout.CENTER);
     }
 
     // =========================================================================
-    // Per-field dice button
+    // Badge + hint builders
     // =========================================================================
 
-    private JButton buildDiceButton(ParameterDef param, int idx) {
-        JButton btn = new JButton(DICE);
-        btn.setFont(btn.getFont().deriveFont(14f));
-        btn.setMargin(new Insets(2, 6, 2, 6));
-        btn.setFocusPainted(false);
-        btn.setBorderPainted(true);
-        btn.setToolTipText("Generate random " + param.typeName() + " for \"" + param.name() + "\"");
-        btn.addActionListener(e -> fillOne(idx));
-        return btn;
+    private static JLabel buildTypeBadge(ParameterDef param) {
+        ParameterDef.FieldType kind = ParameterTypeClassifier.classify(param.typeName());
+        String text; Color fg, bg;
+        switch (kind) {
+            case NUMBER  -> { text = "Long";   fg = UITheme.BADGE_NUMBER;  bg = UITheme.BADGE_NUMBER_BG; }
+            case DECIMAL -> { text = "Double"; fg = UITheme.BADGE_DECIMAL; bg = UITheme.BADGE_DECIMAL_BG; }
+            case BOOLEAN -> { text = "Boolean";fg = UITheme.BADGE_BOOLEAN; bg = UITheme.BADGE_BOOLEAN_BG; }
+            case JSON    -> { text = "JSON";   fg = UITheme.BADGE_JSON;    bg = UITheme.BADGE_JSON_BG; }
+            default      -> { text = param.typeName().contains("<")
+                                ? param.typeName().substring(0, param.typeName().indexOf('<'))
+                                : param.typeName();
+                              fg = UITheme.BADGE_TEXT; bg = UITheme.BADGE_TEXT_BG; }
+        }
+
+        JLabel badge = new JLabel(text) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getBackground());
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        badge.setFont(UITheme.MONO_XS.deriveFont(10f));
+        badge.setForeground(fg);
+        badge.setBackground(bg);
+        badge.setOpaque(false);
+        badge.setBorder(BorderFactory.createEmptyBorder(1, 6, 1, 6));
+        return badge;
+    }
+
+    private static JLabel buildHintLabel(ParameterDef param) {
+        ParameterDef.FieldType kind = ParameterTypeClassifier.classify(param.typeName());
+        String hint = switch (kind) {
+            case NUMBER  -> "required \u00B7 numeric";
+            case DECIMAL -> "required \u00B7 decimal";
+            case BOOLEAN -> "true or false";
+            case JSON    -> "JSON object";
+            default -> param.typeName().toLowerCase().contains("instant")
+                    || param.typeName().toLowerCase().contains("date") ? "ISO-8601" : "required";
+        };
+        JLabel label = new JLabel(hint);
+        label.setFont(UITheme.UI_SM);
+        label.setForeground(UITheme.MUTED);
+        return label;
     }
 
     // =========================================================================
     // Random fill
     // =========================================================================
 
-    /** Fills every input with a random sample value. */
     private void fillAllRandom() {
-        for (int i = 0; i < params.size(); i++) {
-            fillOne(i);
-        }
+        for (int i = 0; i < params.size(); i++) fillOne(i);
     }
 
-    /** Fills the input at position {@code idx} with one random sample value. */
     private void fillOne(int idx) {
         String value = RandomDataGenerator.generate(params.get(idx));
         applyValue(inputs.get(idx), value);
@@ -171,94 +231,46 @@ class ParameterFormPanel extends JPanel {
     }
 
     // =========================================================================
-    // Label + badge
-    // =========================================================================
-
-    private static JPanel buildParamLabel(ParameterDef param) {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setOpaque(false);
-
-        JLabel nameLabel = new JLabel(param.name());
-        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD, 12f));
-        nameLabel.setAlignmentX(LEFT_ALIGNMENT);
-
-        JLabel typeLabel = new JLabel(badgeText(param));
-        typeLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 10));
-        typeLabel.setForeground(badgeColor(param));
-        typeLabel.setAlignmentX(LEFT_ALIGNMENT);
-
-        panel.add(nameLabel);
-        panel.add(Box.createVerticalStrut(2));
-        panel.add(typeLabel);
-        return panel;
-    }
-
-    private static String badgeText(ParameterDef param) {
-        return switch (ParameterTypeClassifier.classify(param.typeName())) {
-            case BOOLEAN -> "boolean";
-            case NUMBER  -> "int / long";
-            case DECIMAL -> "float / double";
-            case JSON    -> "object (JSON)";
-            default      -> param.typeName();
-        };
-    }
-
-    private static Color badgeColor(ParameterDef param) {
-        return switch (ParameterTypeClassifier.classify(param.typeName())) {
-            case BOOLEAN -> UITheme.BADGE_BOOLEAN;
-            case NUMBER  -> UITheme.BADGE_NUMBER;
-            case DECIMAL -> UITheme.BADGE_DECIMAL;
-            case JSON    -> UITheme.BADGE_JSON;
-            default      -> UITheme.BADGE_TEXT;
-        };
-    }
-
-    // =========================================================================
     // Input widget factory
     // =========================================================================
 
     private JComponent createInput(ParameterDef param) {
-        return switch (ParameterTypeClassifier.classify(param.typeName())) {
+        ParameterDef.FieldType kind = ParameterTypeClassifier.classify(param.typeName());
+        return switch (kind) {
             case BOOLEAN -> {
                 JCheckBox cb = new JCheckBox();
+                cb.setOpaque(false);
                 cb.setToolTipText("Boolean: checked = true, unchecked = false");
                 yield cb;
             }
             case JSON -> {
                 JTextArea ta = new JTextArea(4, 30);
-                ta.setFont(UITheme.MONO_SM);
+                ta.setFont(UITheme.MONO_XS.deriveFont(11f));
+                ta.setBackground(UITheme.PANEL);
+                ta.setForeground(UITheme.INK);
+                ta.setCaretColor(UITheme.INK);
                 ta.setToolTipText("JSON value for " + param.typeName());
-                ta.setBorder(BorderFactory.createLineBorder(UITheme.BADGE_JSON.darker(), 1));
+                ta.setBorder(BorderFactory.createLineBorder(UITheme.BORDER_SUB, 1));
                 yield ta;
             }
             case NUMBER -> {
                 JTextField tf = new JTextField(20);
-                tf.setToolTipText("Integer value — e.g. 42");
+                tf.setToolTipText("Integer value \u2014 e.g. 42");
                 yield tf;
             }
             case DECIMAL -> {
                 JTextField tf = new JTextField(20);
-                tf.setToolTipText("Decimal value — e.g. 3.14");
+                tf.setToolTipText("Decimal value \u2014 e.g. 3.14");
                 yield tf;
             }
             default -> new JTextField(20);
         };
     }
 
-    private static JScrollPane scrollWrap(JTextArea ta) {
-        return new JScrollPane(ta);
-    }
-
     // =========================================================================
     // Value collection
     // =========================================================================
 
-    /**
-     * Collects current values from all input widgets in declaration order.
-     *
-     * @return list of {@link ParameterValue} ready to send to the agent
-     */
     List<ParameterValue> collectValues() {
         List<ParameterValue> values = new ArrayList<>();
         for (int i = 0; i < params.size(); i++) {
@@ -272,16 +284,5 @@ class ParameterFormPanel extends JPanel {
         if (comp instanceof JTextArea  ta) return ta.getText().trim();
         if (comp instanceof JTextField tf) return tf.getText().trim();
         return "";
-    }
-
-    // =========================================================================
-    // Layout helper
-    // =========================================================================
-
-    private static GridBagConstraints baseConstraints() {
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(8, 10, 8, 6);
-        gbc.anchor = GridBagConstraints.NORTHWEST;
-        return gbc;
     }
 }

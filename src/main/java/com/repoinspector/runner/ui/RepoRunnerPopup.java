@@ -4,6 +4,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.WindowManager;
+import com.repoinspector.model.OperationType;
 import com.repoinspector.runner.model.ExecutionRequest;
 import com.repoinspector.runner.model.ExecutionResult;
 import com.repoinspector.runner.model.ParameterDef;
@@ -14,6 +15,8 @@ import com.repoinspector.ui.UITheme;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -23,22 +26,19 @@ import java.util.List;
  * Floating popup that executes a repository method against the running Spring Boot
  * application via the RepoBuddy agent.
  *
- * <p>Spring Data JPA generates and executes the real query inside the app's own
- * Spring context — no query simulation or custom SQL generation is done here.
- * The agent captures the executed SQL via Hibernate's {@code StatementInspector}
- * and returns the serialised result.
- *
  * <p>Layout:
  * <pre>
- *  ┌─ NORTH ─────────────────────────────────────────────────────────────────┐
- *  │  UserRepository  →  findById()  (id: Long)      ● Agent Ready           │
- *  └─────────────────────────────────────────────────────────────────────────┘
- *  ┌─ CENTER (JTabbedPane) ──────────────────────────────────────────────────┐
- *  │  [ ⚙ Parameters ]  [ ⛁ SQL Logs ]  [ {} Result ]  [ ✖ Errors ]        │
- *  └─────────────────────────────────────────────────────────────────────────┘
- *  ┌─ SOUTH ─────────────────────────────────────────────────────────────────┐
- *  │  [ Run ▶ ]   ████████████████████ (progress bar, hidden when idle)      │
- *  └─────────────────────────────────────────────────────────────────────────┘
+ *  ┌─ NORTH: titlebar ───────────────────────────────────────────────────────────┐
+ *  │  ▶  OrderRepository.findAllByCustomerIdAndStatus   📌 🕘 ✖                  │
+ *  ├─ hint bar ──────────────────────────────────────────────────────────────────┤
+ *  │  [READ]  4 parameters                                                        │
+ *  └─────────────────────────────────────────────────────────────────────────────┘
+ *  ┌─ CENTER (JTabbedPane) ──────────────────────────────────────────────────────┐
+ *  │  [ ⚙ Parameters ]  [ ⛁ SQL Logs ]  [ {} Result ]  [ ✖ Errors ]            │
+ *  └─────────────────────────────────────────────────────────────────────────────┘
+ *  ┌─ SOUTH ─────────────────────────────────────────────────────────────────────┐
+ *  │  ● Connected · localhost:8080          [ Cancel ]  [ ▶ Run  Ctrl+↵ ]        │
+ *  └─────────────────────────────────────────────────────────────────────────────┘
  * </pre>
  */
 public class RepoRunnerPopup extends JDialog {
@@ -55,17 +55,16 @@ public class RepoRunnerPopup extends JDialog {
     private final String  repositoryClass;
     private final String  methodName;
 
-    // ── Sub-panels ────────────────────────────────────────────────────────────
     private final ParameterFormPanel parameterForm;
     private final SqlLogPanel        sqlPanel;
     private final ResultPanel        resultPanel;
     private final ErrorPanel         errorPanel;
     private final JTabbedPane        tabs;
 
-    // ── Status bar ────────────────────────────────────────────────────────────
     private final JLabel       agentStatusLabel;
     private final JProgressBar progressBar;
     private final JButton      runButton;
+    private final JButton      cancelButton;
 
     private static Window resolveParentWindow(Project project) {
         IdeFrame ideFrame = WindowManager.getInstance().getIdeFrame(project);
@@ -77,7 +76,7 @@ public class RepoRunnerPopup extends JDialog {
     public RepoRunnerPopup(Project project, String repositoryClass,
                            String methodName, List<ParameterDef> params) {
         super(resolveParentWindow(project),
-                "Repository Runner  \u2014  " + simpleName(repositoryClass) + "." + methodName + "()",
+                simpleName(repositoryClass) + "." + methodName + "()",
                 Dialog.ModalityType.MODELESS);
         this.project         = project;
         this.repositoryClass = repositoryClass;
@@ -100,35 +99,92 @@ public class RepoRunnerPopup extends JDialog {
         tabs.addTab("{} Result",         resultPanel);
         tabs.addTab("\u2716 Errors",     errorPanel);
 
-        // ── North: header + agent status ──────────────────────────────────────
-        String paramSummary = params.stream()
-                .map(p -> p.name() + ": " + p.typeName())
-                .reduce((a, b) -> a + ",  " + b)
-                .orElse("no params");
+        // ── Titlebar ──────────────────────────────────────────────────────────
+        JLabel titleLabel = new JLabel();
+        titleLabel.setFont(UITheme.MONO_XS.deriveFont(Font.BOLD, 13f));
+        String repoHex   = UITheme.toHex(UITheme.GOLD);
+        String methodHex = UITheme.toHex(UITheme.ACCENT);
+        titleLabel.setText("<html>"
+                + "<font color='" + repoHex + "'>" + simpleName(repositoryClass) + "</font>"
+                + "<font color='" + UITheme.toHex(UITheme.MUTED) + "'>.</font>"
+                + "<font color='" + methodHex + "'>" + methodName + "</font>"
+                + "</html>");
 
-        JLabel headerLabel = new JLabel(
-                UITheme.popupHeaderHtml(simpleName(repositoryClass), methodName, paramSummary));
-        headerLabel.setFont(headerLabel.getFont().deriveFont(14f));
-        headerLabel.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+        JButton pinBtn     = UITheme.iconButton("\uD83D\uDCCC");
+        JButton historyBtn = UITheme.iconButton("\uD83D\uDD58");
+        JButton closeBtn   = UITheme.iconButton("\u2716");
+        pinBtn.setToolTipText("Pin");
+        historyBtn.setToolTipText("History");
+        closeBtn.setToolTipText("Close");
+        closeBtn.setForeground(UITheme.DANGER);
+        closeBtn.addActionListener(e -> dispose());
 
-        agentStatusLabel = new JLabel();
-        agentStatusLabel.setFont(agentStatusLabel.getFont().deriveFont(11f));
-        agentStatusLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 4));
-        setAgentStatusUnknown();
+        JPanel titlebar = new JPanel(new BorderLayout(8, 0));
+        titlebar.setBackground(UITheme.HEADER_BG);
+        titlebar.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 8));
 
-        JPanel headerRow = new JPanel(new BorderLayout(12, 0));
-        headerRow.setOpaque(false);
-        headerRow.add(headerLabel,      BorderLayout.CENTER);
-        headerRow.add(agentStatusLabel, BorderLayout.EAST);
+        JLabel playIcon = new JLabel("\u25B6");
+        playIcon.setFont(UITheme.UI.deriveFont(12f));
+        playIcon.setForeground(UITheme.ACCENT);
+        playIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 8));
+
+        JPanel titleLeft = new JPanel(new BorderLayout());
+        titleLeft.setOpaque(false);
+        titleLeft.add(playIcon,   BorderLayout.WEST);
+        titleLeft.add(titleLabel, BorderLayout.CENTER);
+
+        JPanel titleRight = new JPanel();
+        titleRight.setLayout(new BoxLayout(titleRight, BoxLayout.X_AXIS));
+        titleRight.setOpaque(false);
+        titleRight.add(pinBtn);
+        titleRight.add(historyBtn);
+        titleRight.add(closeBtn);
+
+        titlebar.add(titleLeft,  BorderLayout.CENTER);
+        titlebar.add(titleRight, BorderLayout.EAST);
+
+        // ── Hint bar ──────────────────────────────────────────────────────────
+        OperationType op = OperationType.fromMethodName(methodName);
+        JLabel opBadge = buildOpBadge(op);
+
+        JLabel paramCount = new JLabel(params.size() + " parameter" + (params.size() == 1 ? "" : "s"));
+        paramCount.setFont(UITheme.UI_SM);
+        paramCount.setForeground(UITheme.MUTED);
+
+        JLabel hintSep = new JLabel(" \u00B7 ");
+        hintSep.setFont(UITheme.UI_SM);
+        hintSep.setForeground(UITheme.BORDER_SUB);
+
+        JPanel hintBar = new JPanel();
+        hintBar.setLayout(new BoxLayout(hintBar, BoxLayout.X_AXIS));
+        hintBar.setBackground(UITheme.HEADER_BG);
+        hintBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 1, 0, UITheme.BORDER_SUB),
+                BorderFactory.createEmptyBorder(4, 12, 4, 12)));
+        hintBar.add(opBadge);
+        hintBar.add(hintSep);
+        hintBar.add(paramCount);
 
         JPanel north = new JPanel(new BorderLayout());
-        north.setBackground(UITheme.HEADER_BG);
-        north.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, UITheme.ACCENT.darker()),
-                BorderFactory.createEmptyBorder(8, 12, 8, 12)));
-        north.add(headerRow, BorderLayout.CENTER);
+        north.add(titlebar, BorderLayout.NORTH);
+        north.add(hintBar,  BorderLayout.SOUTH);
 
-        // ── South: run button + progress ──────────────────────────────────────
+        // ── South: agent status + cancel + run ────────────────────────────────
+        agentStatusLabel = new JLabel();
+        agentStatusLabel.setFont(UITheme.UI_SM);
+        setAgentStatusUnknown();
+
+        JPanel agentPanel = new JPanel();
+        agentPanel.setLayout(new BoxLayout(agentPanel, BoxLayout.X_AXIS));
+        agentPanel.setOpaque(false);
+        JLabel connDot = new JLabel("\u25CF ");
+        connDot.setFont(UITheme.UI_SM);
+        connDot.setForeground(UITheme.SUCCESS);
+        agentPanel.add(agentStatusLabel);
+
+        cancelButton = UITheme.button("Cancel");
+        cancelButton.addActionListener(e -> dispose());
+
         runButton = UITheme.runButton();
         runButton.addActionListener(e -> runExecution());
 
@@ -138,54 +194,58 @@ public class RepoRunnerPopup extends JDialog {
         progressBar.setStringPainted(true);
         progressBar.setString("Executing\u2026");
         progressBar.setForeground(UITheme.SUCCESS);
+        progressBar.setMaximumSize(new Dimension(200, 16));
 
         JPanel south = new JPanel(new BorderLayout(10, 0));
+        south.setBackground(UITheme.TOOLBAR);
         south.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, UITheme.ACCENT.darker()),
-                BorderFactory.createEmptyBorder(8, 10, 8, 10)));
-        south.add(runButton,   BorderLayout.WEST);
-        south.add(progressBar, BorderLayout.CENTER);
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UITheme.BORDER_SUB),
+                BorderFactory.createEmptyBorder(8, 12, 8, 12)));
+
+        JPanel southRight = new JPanel();
+        southRight.setLayout(new BoxLayout(southRight, BoxLayout.X_AXIS));
+        southRight.setOpaque(false);
+        southRight.add(progressBar);
+        southRight.add(Box.createHorizontalStrut(8));
+        southRight.add(cancelButton);
+        southRight.add(Box.createHorizontalStrut(4));
+        southRight.add(runButton);
+
+        south.add(agentStatusLabel, BorderLayout.WEST);
+        south.add(southRight,       BorderLayout.EAST);
 
         // ── Root ──────────────────────────────────────────────────────────────
-        JPanel root = new JPanel(new BorderLayout(0, 4));
-        root.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        JPanel root = new JPanel(new BorderLayout(0, 0));
         root.add(north, BorderLayout.NORTH);
         root.add(tabs,  BorderLayout.CENTER);
         root.add(south, BorderLayout.SOUTH);
         setContentPane(root);
     }
 
-    /**
-     * Makes the popup visible.
-     *
-     * <p>If {@code anchor} is non-null (screen coordinates from a gutter icon click),
-     * the popup is placed just to the right of the click point, pushed back onto the
-     * screen if it would overflow.  If {@code anchor} is null (e.g. opened from the
-     * tool-window Run button), the popup is centred on the screen.
-     */
     public void display(Point anchor) {
-        if (anchor != null) {
-            positionNearAnchor(anchor);
-        } else {
-            setLocationRelativeTo(null);
-        }
+        if (anchor != null) positionNearAnchor(anchor);
+        else setLocationRelativeTo(null);
         setVisible(true);
         toFront();
-        // Bind Escape → close so the developer can dismiss with one keystroke.
+
+        // Escape → close
         getRootPane().registerKeyboardAction(
                 e -> dispose(),
-                javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0),
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
-        // Check agent connectivity in the background so the popup opens instantly.
+
+        // Ctrl+Enter → run
+        int mask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        getRootPane().registerKeyboardAction(
+                e -> { if (runButton.isEnabled()) runExecution(); },
+                KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, mask),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
+
         ApplicationManager.getApplication().executeOnPooledThread(this::refreshAgentStatus);
     }
 
-    /**
-     * Positions the dialog to the right of {@code anchor}, clamped so it stays
-     * fully within the default screen bounds.
-     */
     private void positionNearAnchor(Point anchor) {
-        java.awt.Dimension screen = java.awt.Toolkit.getDefaultToolkit().getScreenSize();
+        Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
         int x = anchor.x + 16;
         int y = anchor.y - POPUP_HEIGHT / 4;
         x = Math.max(0, Math.min(x, screen.width  - POPUP_WIDTH));
@@ -218,7 +278,6 @@ public class RepoRunnerPopup extends JDialog {
                 SwingUtilities.invokeLater(this::displayAgentNotRunning);
                 return;
             }
-
             RepoExecutionClient client = new RepoExecutionClient(baseUrl);
             try {
                 ExecutionResult result = client.execute(request);
@@ -235,16 +294,12 @@ public class RepoRunnerPopup extends JDialog {
 
     private void displayResult(ExecutionResult result) {
         resetLoadingState();
-
         List<SqlLogEntry> logs = result.sqlLogs() != null ? result.sqlLogs() : List.of();
         sqlPanel.setSqlLogs(logs);
         resultPanel.setResult(result.result(), result.executionTimeMs());
         errorPanel.setError(result.exception());
-
         tabs.setSelectedIndex(result.isSuccess() ? TAB_RESULT : TAB_ERRORS);
-        if (!logs.isEmpty()) {
-            boldTabTitle(TAB_SQL);
-        }
+        if (!logs.isEmpty()) boldTabTitle(TAB_SQL);
     }
 
     private void displayAgentNotRunning() {
@@ -271,7 +326,6 @@ public class RepoRunnerPopup extends JDialog {
     private void displayExecutionError(String baseUrl, Exception ex) {
         resetLoadingState();
         String msg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
-
         if (msg.contains("HTTP 401") || msg.contains("HTTP 403")) {
             errorPanel.setError(
                     "Received an auth error from: " + baseUrl + "\n\n"
@@ -287,10 +341,9 @@ public class RepoRunnerPopup extends JDialog {
     }
 
     // =========================================================================
-    // Agent status indicator
+    // Agent status indicator (in south bar)
     // =========================================================================
 
-    /** Checks the port file on the current thread (call from background thread). */
     private void refreshAgentStatus() {
         String url = SpringAppUrlResolver.resolve(project);
         boolean reachable = url != null && isPortReachable(url);
@@ -301,7 +354,9 @@ public class RepoRunnerPopup extends JDialog {
     }
 
     private void setAgentStatusOnline() {
-        agentStatusLabel.setText("\u25CF  Agent Ready");
+        String url = SpringAppUrlResolver.resolve(project);
+        String host = url != null ? URI.create(url).getHost() + ":" + URI.create(url).getPort() : "localhost";
+        agentStatusLabel.setText("\u25CF  Connected \u00B7 " + host);
         agentStatusLabel.setForeground(UITheme.SUCCESS);
     }
 
@@ -319,48 +374,59 @@ public class RepoRunnerPopup extends JDialog {
     // Helpers
     // =========================================================================
 
+    private JLabel buildOpBadge(OperationType op) {
+        String text; Color fg, bg;
+        if (op == OperationType.READ) {
+            text = "READ";  fg = UITheme.SUCCESS; bg = UITheme.SUCCESS_SUB;
+        } else if (op == OperationType.WRITE) {
+            text = "WRITE"; fg = UITheme.WARNING; bg = UITheme.WARNING_SUB;
+        } else {
+            text = "?";     fg = UITheme.MUTED;   bg = UITheme.BORDER_SUB;
+        }
+        JLabel badge = new JLabel(text) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getBackground());
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        badge.setFont(UITheme.UI_SM.deriveFont(Font.BOLD));
+        badge.setForeground(fg);
+        badge.setBackground(bg);
+        badge.setOpaque(false);
+        badge.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
+        return badge;
+    }
+
     private void resetLoadingState() {
         progressBar.setIndeterminate(false);
         progressBar.setVisible(false);
         runButton.setEnabled(true);
     }
 
-    /**
-     * Makes the tab title bold to draw attention to new content.
-     * Idempotent if the title is already wrapped in HTML bold tags.
-     */
     private void boldTabTitle(int index) {
         String title = tabs.getTitleAt(index);
-        if (!title.startsWith("<html>")) {
+        if (!title.startsWith("<html>"))
             tabs.setTitleAt(index, "<html><b>" + title + "</b></html>");
-        }
     }
 
-    /** Strips bold HTML wrappers from all tab titles (called before each new run). */
     private void resetTabTitles() {
         for (int i = 0; i < tabs.getTabCount(); i++) {
             String title = tabs.getTitleAt(i);
-            if (title.startsWith("<html><b>") && title.endsWith("</b></html>")) {
-                tabs.setTitleAt(i, title.substring("<html><b>".length(),
-                        title.length() - "</b></html>".length()));
-            }
+            if (title.startsWith("<html><b>") && title.endsWith("</b></html>"))
+                tabs.setTitleAt(i, title.substring(9, title.length() - 11));
         }
     }
 
-    /**
-     * Returns {@code true} if a TCP connection to the agent port succeeds within
-     * 500 ms.  Must be called on a background thread, never on the EDT.
-     */
     private static boolean isPortReachable(String baseUrl) {
         try {
             URI uri = URI.create(baseUrl);
-            try (Socket s = new Socket()) {
-                s.connect(new InetSocketAddress(uri.getHost(), uri.getPort()), 500);
-            }
+            try (Socket s = new Socket()) { s.connect(new InetSocketAddress(uri.getHost(), uri.getPort()), 500); }
             return true;
-        } catch (Exception e) {
-            return false;
-        }
+        } catch (Exception e) { return false; }
     }
 
     private static String simpleName(String fqn) {

@@ -11,6 +11,7 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.JBTable;
 import com.repoinspector.analysis.api.RepositoryAnalysisService;
+import com.repoinspector.model.OperationType;
 import com.repoinspector.model.RepositoryMethodInfo;
 import com.repoinspector.runner.model.ParameterDef;
 import com.repoinspector.runner.service.api.ParameterExtractionService;
@@ -24,57 +25,43 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
  * Main panel for the "Repository Usage" tab.
- *
- * <p>Shows a sortable, filterable table of all Spring Data repository methods with their
- * call counts.  Cells in the Call Count column are colour-coded:
- * <ul>
- *   <li><b>Red</b>    — never called (count = 0)</li>
- *   <li><b>Amber</b>  — called once or twice</li>
- *   <li><b>Green</b>  — called three or more times</li>
- * </ul>
- *
- * <p>Toolbar controls:
- * <ul>
- *   <li>Live search field — filters by repository name or method name as you type</li>
- *   <li>Show Unused Only toggle — restricts the view to methods with 0 calls</li>
- *   <li>Export CSV — copies the full table to the system clipboard as CSV text</li>
- *   <li>↻ Refresh — re-runs the static call-site analysis</li>
- * </ul>
- * Double-clicking a row navigates to the method declaration in the editor.
+ * Redesigned to match the AfterTable reference design.
  */
 public class RepoInspectorPanel extends JPanel {
 
-    private static final String[] COLUMN_NAMES = {"Repository", "Method", "Signature", "Calls"};
+    private static final String[] COLUMN_NAMES  = {"Repository", "Method", "Signature", "Op", "Calls"};
     private static final int COL_REPO       = 0;
     private static final int COL_METHOD     = 1;
-    private static final int COL_CALL_COUNT = 3;
-    private static final int CALL_COUNT_HIGH = 2;   // threshold: > this value → green
+    private static final int COL_SIG        = 2;
+    private static final int COL_OP         = 3;
+    private static final int COL_CALL_COUNT = 4;
 
     private final Project          project;
     private final DefaultTableModel tableModel;
     private final JBTable          table;
     private final TableRowSorter<DefaultTableModel> rowSorter;
-    private final JLabel           statusLabel;
     private final JTextField       searchField;
     private final JToggleButton    unusedOnlyToggle;
     private final JToggleButton    currentFileToggle;
     private final JButton          runButton;
 
-    /** Parallel list of PSI references for double-click navigation (model-index aligned). */
-    private List<PsiMethod>             methodList  = List.of();
-    private List<RepositoryMethodInfo>  lastInfos   = List.of();
+    // Status bar components
+    private final JLabel totalLabel;
+    private final JLabel unusedLabel;
+    private final JLabel visibleLabel;
 
-    /**
-     * Simple class name of the file open in the editor when "Current File" is active.
-     * {@code null} means the filter is inactive.
-     */
+    private List<PsiMethod>            methodList = List.of();
+    private List<RepositoryMethodInfo> lastInfos  = List.of();
+
     @Nullable private String currentFileClassName = null;
 
     public RepoInspectorPanel(Project project) {
@@ -82,85 +69,111 @@ public class RepoInspectorPanel extends JPanel {
         this.project = project;
 
         // ── Search field ──────────────────────────────────────────────────────
-        searchField = new JTextField(18);
-        searchField.setToolTipText("Filter by repository or method name");
-        searchField.putClientProperty("JTextField.placeholderText", "Search…");
+        searchField = new JTextField(22);
+        searchField.putClientProperty("JTextField.placeholderText", "Search repository or method\u2026");
+        searchField.setFont(UITheme.UI);
+        searchField.setToolTipText("Ctrl+F");
         searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent e)  { applyFilter(); }
             public void removeUpdate(javax.swing.event.DocumentEvent e)  { applyFilter(); }
             public void changedUpdate(javax.swing.event.DocumentEvent e) { applyFilter(); }
         });
 
-        // ── Show Unused Only toggle ───────────────────────────────────────────
-        unusedOnlyToggle = new JToggleButton("Show Unused Only");
-        unusedOnlyToggle.setFont(unusedOnlyToggle.getFont().deriveFont(11f));
-        unusedOnlyToggle.setFocusPainted(false);
-        unusedOnlyToggle.setToolTipText("Restrict view to repository methods that are never called");
-        unusedOnlyToggle.addItemListener(e -> applyFilter());
-
-        // ── Current File toggle ───────────────────────────────────────────────
-        currentFileToggle = new JToggleButton("Current File");
-        currentFileToggle.setFont(currentFileToggle.getFont().deriveFont(11f));
-        currentFileToggle.setFocusPainted(false);
-        currentFileToggle.setToolTipText("Show only repository methods called from the currently open file");
-        currentFileToggle.addItemListener(e -> {
-            if (currentFileToggle.isSelected()) {
-                loadCurrentFileFilter();
-            } else {
-                currentFileClassName = null;
-                applyFilter();
-            }
+        // Ctrl+F focuses search
+        KeyStroke ctrlF = KeyStroke.getKeyStroke(KeyEvent.VK_F, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(ctrlF, "focusSearch");
+        getActionMap().put("focusSearch", new javax.swing.AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { searchField.requestFocusInWindow(); }
         });
 
-        // ── Export CSV button ─────────────────────────────────────────────────
-        JButton exportCsvButton = UITheme.button("\u21A7  Export CSV");
-        exportCsvButton.setFont(exportCsvButton.getFont().deriveFont(11f));
-        exportCsvButton.setToolTipText("Copy the full table to clipboard as CSV");
-        exportCsvButton.addActionListener(e -> exportCsv());
+        // ── Toggle buttons ────────────────────────────────────────────────────
+        unusedOnlyToggle = UITheme.toggleButton("Unused only");
+        unusedOnlyToggle.setToolTipText("Show methods with zero call sites");
+        unusedOnlyToggle.addItemListener(e -> applyFilter());
+
+        currentFileToggle = UITheme.toggleButton("Current file");
+        currentFileToggle.setToolTipText("Show only methods from the open editor's class");
+        currentFileToggle.addItemListener(e -> {
+            if (currentFileToggle.isSelected()) loadCurrentFileFilter();
+            else { currentFileClassName = null; applyFilter(); }
+        });
+
+        // ── Icon buttons ──────────────────────────────────────────────────────
+        JButton exportBtn   = UITheme.iconButton("\u21A7");
+        JButton refreshBtn  = UITheme.iconButton("\u21BB");
+        exportBtn.setToolTipText("Export CSV");
+        refreshBtn.setToolTipText("Refresh analysis");
+        exportBtn.addActionListener(e -> exportCsv());
+        refreshBtn.addActionListener(e -> runAnalysis());
 
         // ── Run button ────────────────────────────────────────────────────────
         runButton = UITheme.runButton();
         runButton.setEnabled(false);
-        runButton.setToolTipText("Run the selected repository method against your running Spring Boot app");
+        runButton.setToolTipText("Run selected method (Ctrl+Enter)");
         runButton.addActionListener(e -> openRunnerPopupForSelected());
 
-        // ── Refresh button ────────────────────────────────────────────────────
-        JButton refreshButton = UITheme.button("\u21BB  Refresh");
-        refreshButton.setFont(refreshButton.getFont().deriveFont(Font.BOLD, 12f));
-        refreshButton.addActionListener(e -> runAnalysis());
+        // Ctrl+Enter runs
+        KeyStroke ctrlEnter = KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,
+                Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(ctrlEnter, "runSelected");
+        getActionMap().put("runSelected", new javax.swing.AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (runButton.isEnabled()) openRunnerPopupForSelected();
+            }
+        });
 
-        // ── Status label ──────────────────────────────────────────────────────
-        statusLabel = new JLabel("  Double-click a row to navigate to the method.");
-        statusLabel.setFont(statusLabel.getFont().deriveFont(11f));
-        statusLabel.setForeground(UITheme.MUTED);
+        // ── Search wrapper panel ──────────────────────────────────────────────
+        JPanel searchWrapper = new JPanel(new BorderLayout(4, 0));
+        searchWrapper.setOpaque(false);
+        searchWrapper.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UITheme.BORDER_SUB, 1),
+                BorderFactory.createEmptyBorder(2, 6, 2, 6)));
+        JLabel searchIcon = new JLabel("\uD83D\uDD0D");
+        searchIcon.setFont(UITheme.UI_SM);
+        searchIcon.setForeground(UITheme.MUTED);
+        searchWrapper.add(searchIcon, BorderLayout.WEST);
+        searchWrapper.add(searchField, BorderLayout.CENTER);
+        JLabel searchKbd = new JLabel("Ctrl+F");
+        searchKbd.setFont(UITheme.UI_SM);
+        searchKbd.setForeground(UITheme.MUTED);
+        searchKbd.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UITheme.BORDER_SUB, 1),
+                BorderFactory.createEmptyBorder(0, 4, 0, 4)));
+        searchWrapper.add(searchKbd, BorderLayout.EAST);
 
         // ── Toolbar assembly ──────────────────────────────────────────────────
-        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
-        searchBar.add(new JLabel("Search:"));
-        searchBar.add(searchField);
-        searchBar.add(unusedOnlyToggle);
-        searchBar.add(currentFileToggle);
-        searchBar.add(exportCsvButton);
+        JPanel toolbar = new JPanel();
+        toolbar.setLayout(new BoxLayout(toolbar, BoxLayout.X_AXIS));
+        toolbar.setBackground(UITheme.TOOLBAR);
+        toolbar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, UITheme.BORDER_SUB),
+                BorderFactory.createEmptyBorder(5, 8, 5, 8)));
 
-        JPanel buttonBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 2));
-        buttonBar.add(runButton);
-        buttonBar.add(refreshButton);
+        toolbar.add(searchWrapper);
+        toolbar.add(Box.createHorizontalStrut(6));
+        toolbar.add(UITheme.toolbarDivider());
+        toolbar.add(Box.createHorizontalStrut(6));
+        toolbar.add(unusedOnlyToggle);
+        toolbar.add(Box.createHorizontalStrut(4));
+        toolbar.add(currentFileToggle);
+        toolbar.add(Box.createHorizontalGlue());
+        toolbar.add(exportBtn);
+        toolbar.add(Box.createHorizontalStrut(2));
+        toolbar.add(refreshBtn);
+        toolbar.add(Box.createHorizontalStrut(4));
+        toolbar.add(UITheme.toolbarDivider());
+        toolbar.add(Box.createHorizontalStrut(6));
+        toolbar.add(runButton);
 
-        JPanel topRow = new JPanel(new BorderLayout(4, 0));
-        topRow.add(searchBar,   BorderLayout.WEST);
-        topRow.add(buttonBar,   BorderLayout.EAST);
-
-        JPanel toolbar = new JPanel(new BorderLayout(8, 0));
-        toolbar.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
-        toolbar.add(topRow,      BorderLayout.NORTH);
-        toolbar.add(statusLabel, BorderLayout.SOUTH);
         add(toolbar, BorderLayout.NORTH);
 
-        // ── Table (CENTER) ────────────────────────────────────────────────────
+        // ── Table ─────────────────────────────────────────────────────────────
         tableModel = new DefaultTableModel(COLUMN_NAMES, 0) {
-            @Override public boolean isCellEditable(int row, int col) { return false; }
-            @Override public Class<?> getColumnClass(int col) {
-                return col == COL_CALL_COUNT ? Integer.class : String.class;
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+            @Override public Class<?> getColumnClass(int c) {
+                if (c == COL_CALL_COUNT) return Integer.class;
+                if (c == COL_OP)         return OperationType.class;
+                return String.class;
             }
         };
 
@@ -168,26 +181,77 @@ public class RepoInspectorPanel extends JPanel {
         rowSorter = new TableRowSorter<>(tableModel);
         table.setRowSorter(rowSorter);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        table.setRowHeight(24);
-        table.getTableHeader().setFont(
-                table.getTableHeader().getFont().deriveFont(Font.BOLD));
+        table.setRowHeight(28);
+        table.setShowGrid(false);
+        table.setIntercellSpacing(new Dimension(0, 0));
+        table.getTableHeader().setFont(UITheme.UI_SM.deriveFont(Font.BOLD));
+        table.getTableHeader().setBackground(UITheme.TOOLBAR);
+        table.getTableHeader().setForeground(UITheme.MUTED);
+        table.setFont(UITheme.UI);
 
-        table.getColumnModel().getColumn(COL_CALL_COUNT)
-                .setCellRenderer(new CallCountCellRenderer());
+        // Column widths
+        table.getColumnModel().getColumn(COL_REPO).setPreferredWidth(200);
+        table.getColumnModel().getColumn(COL_METHOD).setPreferredWidth(200);
+        table.getColumnModel().getColumn(COL_SIG).setPreferredWidth(300);
+        table.getColumnModel().getColumn(COL_OP).setPreferredWidth(70);
+        table.getColumnModel().getColumn(COL_CALL_COUNT).setPreferredWidth(80);
+
+        // Cell renderers
+        table.getColumnModel().getColumn(COL_REPO).setCellRenderer(new RepoCellRenderer());
+        table.getColumnModel().getColumn(COL_METHOD).setCellRenderer(new MethodCellRenderer());
+        table.getColumnModel().getColumn(COL_SIG).setCellRenderer(new SigCellRenderer());
+        table.getColumnModel().getColumn(COL_OP).setCellRenderer(new OpBadgeCellRenderer());
+        table.getColumnModel().getColumn(COL_CALL_COUNT).setCellRenderer(new CallsBadgeCellRenderer());
 
         table.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) navigateToSelectedMethod();
             }
         });
-
         table.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                runButton.setEnabled(table.getSelectedRow() >= 0);
-            }
+            if (!e.getValueIsAdjusting()) runButton.setEnabled(table.getSelectedRow() >= 0);
         });
 
         add(new JBScrollPane(table), BorderLayout.CENTER);
+
+        // ── Status bar ────────────────────────────────────────────────────────
+        totalLabel   = new JLabel("0 methods");
+        unusedLabel  = new JLabel("0 unused");
+        visibleLabel = new JLabel();
+
+        totalLabel.setFont(UITheme.UI_SM);
+        unusedLabel.setFont(UITheme.UI_SM);
+        visibleLabel.setFont(UITheme.UI_SM);
+        unusedLabel.setForeground(UITheme.DANGER);
+        visibleLabel.setForeground(UITheme.MUTED);
+
+        JLabel hintLabel = new JLabel("Double-click a row to navigate \u00B7 \u21B5 Run");
+        hintLabel.setFont(UITheme.UI_SM);
+        hintLabel.setForeground(UITheme.MUTED);
+
+        JLabel sep1 = new JLabel(" \u00B7 ");
+        JLabel sep2 = new JLabel(" \u00B7 ");
+        sep1.setFont(UITheme.UI_SM);
+        sep2.setFont(UITheme.UI_SM);
+        sep1.setForeground(UITheme.MUTED);
+        sep2.setForeground(UITheme.MUTED);
+
+        JPanel statusLeft = new JPanel();
+        statusLeft.setLayout(new BoxLayout(statusLeft, BoxLayout.X_AXIS));
+        statusLeft.setOpaque(false);
+        statusLeft.add(totalLabel);
+        statusLeft.add(sep1);
+        statusLeft.add(unusedLabel);
+
+        JPanel statusBar = new JPanel(new BorderLayout());
+        statusBar.setBackground(UITheme.TOOLBAR);
+        statusBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UITheme.BORDER_SUB),
+                BorderFactory.createEmptyBorder(4, 10, 4, 10)));
+        statusBar.add(statusLeft, BorderLayout.WEST);
+        statusBar.add(hintLabel,  BorderLayout.EAST);
+
+        add(statusBar, BorderLayout.SOUTH);
 
         SwingUtilities.invokeLater(this::runAnalysis);
     }
@@ -197,11 +261,7 @@ public class RepoInspectorPanel extends JPanel {
     // =========================================================================
 
     private void runAnalysis() {
-        statusLabel.setText("  Waiting for IDE indexing\u2026");
-        statusLabel.setForeground(UITheme.MUTED);
         DumbService.getInstance(project).runWhenSmart(() -> {
-            statusLabel.setText("  Analyzing\u2026");
-            statusLabel.setForeground(UITheme.ACCENT);
             ApplicationManager.getApplication().executeOnPooledThread(() -> {
                 RepositoryAnalysisService.AnalysisResult result =
                         project.getService(RepositoryAnalysisService.class).analyzeAll();
@@ -221,16 +281,13 @@ public class RepoInspectorPanel extends JPanel {
                     info.repositoryName(),
                     info.methodName(),
                     info.methodSignature(),
+                    info.operationType(),
                     info.callCount()
             });
         }
 
-        if (currentFileToggle.isSelected()) {
-            loadCurrentFileFilter();
-        } else {
-            applyFilter();
-            updateStatusLabel();
-        }
+        if (currentFileToggle.isSelected()) loadCurrentFileFilter();
+        else applyFilter();
     }
 
     // =========================================================================
@@ -238,8 +295,8 @@ public class RepoInspectorPanel extends JPanel {
     // =========================================================================
 
     private void applyFilter() {
-        String  text           = searchField.getText().trim();
-        boolean onlyUnused     = unusedOnlyToggle.isSelected();
+        String  text             = searchField.getText().trim();
+        boolean onlyUnused       = unusedOnlyToggle.isSelected();
         boolean currentFileActive = currentFileToggle.isSelected() && currentFileClassName != null;
 
         if (text.isEmpty() && !onlyUnused && !currentFileActive) {
@@ -248,77 +305,66 @@ public class RepoInspectorPanel extends JPanel {
             List<RowFilter<DefaultTableModel, Integer>> filters = new ArrayList<>();
             filters.add(buildTextFilter(text));
             filters.add(buildUnusedFilter(onlyUnused));
-            if (currentFileActive) {
-                filters.add(buildCurrentFileFilter(currentFileClassName));
-            }
+            if (currentFileActive) filters.add(buildCurrentFileFilter(currentFileClassName));
             rowSorter.setRowFilter(RowFilter.andFilter(filters));
         }
-        updateStatusLabel();
+        updateStatusBar();
     }
 
     private void loadCurrentFileFilter() {
         com.intellij.openapi.editor.Editor editor =
                 FileEditorManager.getInstance(project).getSelectedTextEditor();
         if (editor == null) {
-            statusLabel.setText("  No file open in editor.");
-            statusLabel.setForeground(UITheme.WARNING);
             currentFileToggle.setSelected(false);
             return;
         }
         VirtualFile vf = FileDocumentManager.getInstance().getFile(editor.getDocument());
-        if (vf == null) {
-            currentFileToggle.setSelected(false);
-            return;
-        }
+        if (vf == null) { currentFileToggle.setSelected(false); return; }
         currentFileClassName = vf.getNameWithoutExtension();
         applyFilter();
     }
 
-    private static RowFilter<DefaultTableModel, Integer> buildCurrentFileFilter(
-            @NotNull String className) {
+    private static RowFilter<DefaultTableModel, Integer> buildCurrentFileFilter(@NotNull String cls) {
         return new RowFilter<>() {
-            @Override
-            public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> entry) {
-                Object val = entry.getValue(COL_REPO);
-                return className.equalsIgnoreCase(val != null ? val.toString() : "");
+            @Override public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> e) {
+                Object v = e.getValue(COL_REPO);
+                return cls.equalsIgnoreCase(v != null ? v.toString() : "");
             }
         };
     }
 
     private static RowFilter<DefaultTableModel, Integer> buildTextFilter(String text) {
-        if (text.isEmpty()) return RowFilter.regexFilter(".*");   // pass-all
-        String escaped = java.util.regex.Pattern.quote(text);
-        // match repository (col 0) OR method name (col 1)
-        return RowFilter.orFilter(java.util.Arrays.asList(
-                RowFilter.regexFilter("(?i)" + escaped, COL_REPO),
-                RowFilter.regexFilter("(?i)" + escaped, COL_METHOD)
-        ));
+        if (text.isEmpty()) return RowFilter.regexFilter(".*");
+        String esc = java.util.regex.Pattern.quote(text);
+        return RowFilter.orFilter(Arrays.asList(
+                RowFilter.regexFilter("(?i)" + esc, COL_REPO),
+                RowFilter.regexFilter("(?i)" + esc, COL_METHOD)));
     }
 
     private static RowFilter<DefaultTableModel, Integer> buildUnusedFilter(boolean onlyUnused) {
-        if (!onlyUnused) return RowFilter.regexFilter(".*");   // pass-all
+        if (!onlyUnused) return RowFilter.regexFilter(".*");
         return new RowFilter<>() {
-            @Override
-            public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> entry) {
-                Object val = entry.getValue(COL_CALL_COUNT);
-                return val instanceof Integer count && count == 0;
+            @Override public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> e) {
+                Object v = e.getValue(COL_CALL_COUNT);
+                return v instanceof Integer count && count == 0;
             }
         };
     }
 
-    private void updateStatusLabel() {
-        int total    = lastInfos.size();
-        long unused  = lastInfos.stream().filter(i -> i.callCount() == 0).count();
-        int visible  = table.getRowCount();
+    private void updateStatusBar() {
+        int total   = lastInfos.size();
+        long unused = lastInfos.stream().filter(i -> i.callCount() == 0).count();
+        int visible = table.getRowCount();
 
-        String base = "  " + total + " method" + (total == 1 ? "" : "s")
-                + "  \u2014  " + unused + " unused";
+        totalLabel.setText("<html><b>" + total + "</b> method" + (total == 1 ? "" : "s") + "</html>");
+        unusedLabel.setText("<html><b>" + unused + "</b> unused</html>");
+
         if (visible < total) {
-            base += "  \u2014  showing " + visible;
+            visibleLabel.setText(" \u00B7 showing <b>" + visible + "</b>");
+            visibleLabel.setVisible(true);
+        } else {
+            visibleLabel.setVisible(false);
         }
-        base += "  \u2014  double-click to navigate";
-        statusLabel.setText(base);
-        statusLabel.setForeground(UITheme.MUTED);
     }
 
     // =========================================================================
@@ -326,63 +372,45 @@ public class RepoInspectorPanel extends JPanel {
     // =========================================================================
 
     private void exportCsv() {
-        if (lastInfos.isEmpty()) {
-            statusLabel.setText("  Nothing to export — run an analysis first.");
-            statusLabel.setForeground(UITheme.WARNING);
-            return;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Repository,Method,Signature,Calls\n");
+        if (lastInfos.isEmpty()) return;
+        StringBuilder sb = new StringBuilder("Repository,Method,Signature,Op,Calls\n");
         for (RepositoryMethodInfo info : lastInfos) {
             sb.append(csvEscape(info.repositoryName())).append(',')
               .append(csvEscape(info.methodName())).append(',')
               .append(csvEscape(info.methodSignature())).append(',')
+              .append(info.operationType().name()).append(',')
               .append(info.callCount()).append('\n');
         }
-
-        Toolkit.getDefaultToolkit()
-                .getSystemClipboard()
-                .setContents(new StringSelection(sb.toString()), null);
-
-        statusLabel.setText("  CSV copied to clipboard (" + lastInfos.size() + " rows).");
-        statusLabel.setForeground(UITheme.SUCCESS);
+        Toolkit.getDefaultToolkit().getSystemClipboard()
+               .setContents(new StringSelection(sb.toString()), null);
     }
 
-    private static String csvEscape(String value) {
-        if (value == null) return "";
-        // Wrap in quotes if it contains comma, quote, or newline
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
+    private static String csvEscape(String v) {
+        if (v == null) return "";
+        if (v.contains(",") || v.contains("\"") || v.contains("\n"))
+            return "\"" + v.replace("\"", "\"\"") + "\"";
+        return v;
     }
 
     // =========================================================================
-    // Run — opens RepoRunnerPopup for the selected row
+    // Run
     // =========================================================================
 
     private void openRunnerPopupForSelected() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) return;
-
         int modelRow = table.convertRowIndexToModel(viewRow);
         if (modelRow < 0 || modelRow >= methodList.size()) return;
-
         PsiMethod method = methodList.get(modelRow);
         if (method == null || !method.isValid()) return;
 
         ApplicationManager.getApplication().runReadAction(() -> {
-            PsiClass cls = method.getContainingClass();
-            String classFqn    = (cls != null && cls.getQualifiedName() != null)
-                    ? cls.getQualifiedName() : "";
-            String name        = method.getName();
-            List<ParameterDef> params = ApplicationManager.getApplication().getService(ParameterExtractionService.class).extract(method);
-
-            SwingUtilities.invokeLater(() -> {
-                RepoRunnerPopup popup = new RepoRunnerPopup(project, classFqn, name, params);
-                popup.display(null);
-            });
+            PsiClass cls  = method.getContainingClass();
+            String fqn    = (cls != null && cls.getQualifiedName() != null) ? cls.getQualifiedName() : "";
+            String name   = method.getName();
+            List<ParameterDef> params = ApplicationManager.getApplication()
+                    .getService(ParameterExtractionService.class).extract(method);
+            SwingUtilities.invokeLater(() -> new RepoRunnerPopup(project, fqn, name, params).display(null));
         });
     }
 
@@ -393,45 +421,135 @@ public class RepoInspectorPanel extends JPanel {
     private void navigateToSelectedMethod() {
         int viewRow = table.getSelectedRow();
         if (viewRow < 0) return;
-
         int modelRow = table.convertRowIndexToModel(viewRow);
         if (modelRow < 0 || modelRow >= methodList.size()) return;
-
-        PsiMethod method = methodList.get(modelRow);
-        if (method != null && method.isValid()) {
-            method.navigate(true);
-        }
+        PsiMethod m = methodList.get(modelRow);
+        if (m != null && m.isValid()) m.navigate(true);
     }
 
     // =========================================================================
-    // Call-count cell renderer — colour-coded via UITheme
+    // Cell renderers
     // =========================================================================
 
-    private static final class CallCountCellRenderer extends DefaultTableCellRenderer {
-
-        @Override
-        public Component getTableCellRendererComponent(
-                JTable table, Object value, boolean isSelected,
-                boolean hasFocus, int row, int column) {
-
-            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-            setHorizontalAlignment(SwingConstants.CENTER);
-            setFont(getFont().deriveFont(Font.BOLD));
-
-            if (!isSelected && value instanceof Integer count) {
-                if (count == 0) {
-                    setBackground(UITheme.COUNT_ZERO);
-                    setForeground(UITheme.COUNT_ZERO.darker().darker());
-                } else if (count <= CALL_COUNT_HIGH) {
-                    setBackground(UITheme.COUNT_LOW);
-                    setForeground(UITheme.COUNT_LOW.darker().darker());
-                } else {
-                    setBackground(UITheme.COUNT_HIGH);
-                    setForeground(UITheme.COUNT_HIGH.darker().darker());
-                }
-            }
-
+    private static final class RepoCellRenderer extends DefaultTableCellRenderer {
+        @Override public Component getTableCellRendererComponent(
+                JTable t, Object v, boolean sel, boolean focus, int r, int c) {
+            super.getTableCellRendererComponent(t, v, sel, focus, r, c);
+            setFont(UITheme.MONO_XS.deriveFont(Font.BOLD, 12f));
+            if (!sel) setForeground(UITheme.GOLD);
+            setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 4));
             return this;
+        }
+    }
+
+    private static final class MethodCellRenderer extends DefaultTableCellRenderer {
+        @Override public Component getTableCellRendererComponent(
+                JTable t, Object v, boolean sel, boolean focus, int r, int c) {
+            super.getTableCellRendererComponent(t, v, sel, focus, r, c);
+            setFont(UITheme.MONO_XS.deriveFont(12f));
+            if (!sel) setForeground(UITheme.ACCENT);
+            setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 4));
+            return this;
+        }
+    }
+
+    private static final class SigCellRenderer extends DefaultTableCellRenderer {
+        @Override public Component getTableCellRendererComponent(
+                JTable t, Object v, boolean sel, boolean focus, int r, int c) {
+            super.getTableCellRendererComponent(t, v, sel, focus, r, c);
+            setFont(UITheme.MONO_XS.deriveFont(11f));
+            if (!sel) setForeground(UITheme.INK_DIM);
+            setBorder(BorderFactory.createEmptyBorder(0, 4, 0, 4));
+            return this;
+        }
+    }
+
+    private static final class OpBadgeCellRenderer extends DefaultTableCellRenderer {
+        @Override public Component getTableCellRendererComponent(
+                JTable t, Object v, boolean sel, boolean focus, int r, int c) {
+            super.getTableCellRendererComponent(t, v, sel, focus, r, c);
+            setText("");
+            setHorizontalAlignment(CENTER);
+            return new BadgePainter(v instanceof OperationType op ? op : OperationType.UNKNOWN, sel);
+        }
+    }
+
+    private static final class BadgePainter extends JComponent {
+        private final OperationType op;
+        private final boolean selected;
+        BadgePainter(OperationType op, boolean selected) {
+            this.op = op; this.selected = selected;
+            setOpaque(false);
+        }
+        @Override protected void paintComponent(Graphics g) {
+            if (selected) return;
+            String label;
+            Color  bg, fg;
+            if (op == OperationType.READ) {
+                label = "READ";  bg = UITheme.SUCCESS_SUB; fg = UITheme.SUCCESS;
+            } else if (op == OperationType.WRITE) {
+                label = "WRITE"; bg = UITheme.WARNING_SUB; fg = UITheme.WARNING;
+            } else {
+                label = "?";     bg = UITheme.BORDER_SUB;  fg = UITheme.MUTED;
+            }
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            FontMetrics fm = g2.getFontMetrics(UITheme.UI_SM);
+            int tw = fm.stringWidth(label);
+            int pw = tw + 10, ph = 16;
+            int x  = (getWidth()  - pw) / 2;
+            int y  = (getHeight() - ph) / 2;
+            g2.setColor(bg);
+            g2.fillRoundRect(x, y, pw, ph, 4, 4);
+            g2.setColor(fg);
+            g2.setFont(UITheme.UI_SM.deriveFont(Font.BOLD));
+            g2.drawString(label, x + 5, y + ph - 4);
+            g2.dispose();
+        }
+    }
+
+    private static final class CallsBadgeCellRenderer extends DefaultTableCellRenderer {
+        @Override public Component getTableCellRendererComponent(
+                JTable t, Object v, boolean sel, boolean focus, int r, int c) {
+            super.getTableCellRendererComponent(t, v, sel, focus, r, c);
+            int count = v instanceof Integer i ? i : 0;
+            setText("");
+            setHorizontalAlignment(RIGHT);
+            return new CallsPainter(count, sel);
+        }
+    }
+
+    private static final class CallsPainter extends JComponent {
+        private final int count;
+        private final boolean selected;
+        CallsPainter(int count, boolean selected) {
+            this.count = count; this.selected = selected;
+            setOpaque(false);
+        }
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            Color dotColor;
+            if (selected) { g2.dispose(); return; }
+            if (count == 0)     dotColor = UITheme.DANGER;
+            else if (count <= 2) dotColor = UITheme.WARNING;
+            else                 dotColor = UITheme.SUCCESS;
+
+            String text = String.valueOf(count);
+            g2.setFont(UITheme.UI_SM);
+            FontMetrics fm = g2.getFontMetrics();
+            int tw = fm.stringWidth(text);
+            int dotSize = 6;
+            int gap = 4;
+            int totalW = dotSize + gap + tw;
+            int x  = getWidth()  - totalW - 8;
+            int cy = getHeight() / 2;
+
+            g2.setColor(dotColor);
+            g2.fillOval(x, cy - dotSize / 2, dotSize, dotSize);
+            g2.setColor(UITheme.INK_DIM);
+            g2.drawString(text, x + dotSize + gap, cy + fm.getAscent() / 2 - 1);
+            g2.dispose();
         }
     }
 }

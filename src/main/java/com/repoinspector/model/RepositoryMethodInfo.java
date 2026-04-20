@@ -8,5 +8,6 @@ public record RepositoryMethodInfo(
         String repositoryName,
         String methodName,
         String methodSignature,
-        int callCount
+        int callCount,
+        OperationType operationType
 ) {}
