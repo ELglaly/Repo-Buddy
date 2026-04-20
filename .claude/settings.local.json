@@ -36,7 +36,8 @@
       "Bash(xargs grep *)",
       "Bash(xargs cat *)",
       "Bash(grep -v \"^$\")",
-      "Bash(awk -F'|' '{print $2}')"
+      "Bash(awk -F'|' '{print $2}')",
+      "Bash(./gradlew.bat compileJava)"
     ]
   }
 }

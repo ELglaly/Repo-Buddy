@@ -4,6 +4,8 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.WindowManager;
+import com.intellij.ui.JBColor;
+import com.intellij.util.ui.JBUI;
 import com.repoinspector.model.OperationType;
 import com.repoinspector.runner.model.ExecutionRequest;
 import com.repoinspector.runner.model.ExecutionResult;
@@ -15,41 +17,35 @@ import com.repoinspector.ui.UITheme;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
 import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Floating popup that executes a repository method against the running Spring Boot
- * application via the RepoBuddy agent.
- *
- * <p>Layout:
- * <pre>
- *  ┌─ NORTH: titlebar ───────────────────────────────────────────────────────────┐
- *  │  ▶  OrderRepository.findAllByCustomerIdAndStatus   📌 🕘 ✖                  │
- *  ├─ hint bar ──────────────────────────────────────────────────────────────────┤
- *  │  [READ]  4 parameters                                                        │
- *  └─────────────────────────────────────────────────────────────────────────────┘
- *  ┌─ CENTER (JTabbedPane) ──────────────────────────────────────────────────────┐
- *  │  [ ⚙ Parameters ]  [ ⛁ SQL Logs ]  [ {} Result ]  [ ✖ Errors ]            │
- *  └─────────────────────────────────────────────────────────────────────────────┘
- *  ┌─ SOUTH ─────────────────────────────────────────────────────────────────────┐
- *  │  ● Connected · localhost:8080          [ Cancel ]  [ ▶ Run  Ctrl+↵ ]        │
- *  └─────────────────────────────────────────────────────────────────────────────┘
- * </pre>
+ * application via the RepoBuddy agent — premium gradient design.
  */
 public class RepoRunnerPopup extends JDialog {
 
-    private static final int POPUP_WIDTH  = 880;
-    private static final int POPUP_HEIGHT = 640;
+    private static final int POPUP_WIDTH  = 900;
+    private static final int POPUP_HEIGHT = 660;
 
     private static final int TAB_PARAMETERS = 0;
     private static final int TAB_SQL        = 1;
     private static final int TAB_RESULT     = 2;
     private static final int TAB_ERRORS     = 3;
+
+    // Accent palette
+    private static final JBColor INDIGO  = new JBColor(new Color(0x4F46E5), new Color(0x6366F1));
+    private static final JBColor VIOLET  = new JBColor(new Color(0x7C3AED), new Color(0x8B5CF6));
+    private static final JBColor TEAL    = new JBColor(new Color(0x0D9488), new Color(0x14B8A6));
+    private static final JBColor TEAL_PALE   = new JBColor(new Color(0xF0FDFA), new Color(0x042F2E));
+    private static final JBColor AMBER   = new JBColor(new Color(0xD97706), new Color(0xF59E0B));
+    private static final JBColor AMBER_PALE  = new JBColor(new Color(0xFFFBEB), new Color(0x2D1B00));
+    private static final JBColor ROSE    = new JBColor(new Color(0xE11D48), new Color(0xFB7185));
 
     private final Project project;
     private final String  repositoryClass;
@@ -61,10 +57,12 @@ public class RepoRunnerPopup extends JDialog {
     private final ErrorPanel         errorPanel;
     private final JTabbedPane        tabs;
 
-    private final JLabel       agentStatusLabel;
-    private final JProgressBar progressBar;
-    private final JButton      runButton;
-    private final JButton      cancelButton;
+    private final JLabel         agentStatusLabel;
+    private final JProgressBar   progressBar;
+    private final JButton        runButton;
+    private final JButton        cancelButton;
+    private final PulsingConnDot connDot;
+    private final List<Timer>    managedTimers = new ArrayList<>();
 
     private static Window resolveParentWindow(Project project) {
         IdeFrame ideFrame = WindowManager.getInstance().getIdeFrame(project);
@@ -83,109 +81,34 @@ public class RepoRunnerPopup extends JDialog {
         this.methodName      = methodName;
 
         setSize(POPUP_WIDTH, POPUP_HEIGHT);
-        setMinimumSize(new Dimension(660, 500));
+        setMinimumSize(new Dimension(680, 520));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
-        // ── Sub-panels ────────────────────────────────────────────────────────
+        // Sub-panels
         parameterForm = new ParameterFormPanel(params);
         sqlPanel      = new SqlLogPanel();
         resultPanel   = new ResultPanel();
         errorPanel    = new ErrorPanel();
 
-        // ── Tabs ──────────────────────────────────────────────────────────────
+        // Tabs
         tabs = new JTabbedPane();
+        tabs.setFont(UITheme.UI.deriveFont(Font.PLAIN, 12f));
         tabs.addTab("\u2699 Parameters", new JScrollPane(parameterForm));
         tabs.addTab("\u26C1 SQL Logs",   sqlPanel);
         tabs.addTab("{} Result",         resultPanel);
         tabs.addTab("\u2716 Errors",     errorPanel);
 
-        // ── Titlebar ──────────────────────────────────────────────────────────
-        JLabel titleLabel = new JLabel();
-        titleLabel.setFont(UITheme.MONO_XS.deriveFont(Font.BOLD, 13f));
-        String repoHex   = UITheme.toHex(UITheme.GOLD);
-        String methodHex = UITheme.toHex(UITheme.ACCENT);
-        titleLabel.setText("<html>"
-                + "<font color='" + repoHex + "'>" + simpleName(repositoryClass) + "</font>"
-                + "<font color='" + UITheme.toHex(UITheme.MUTED) + "'>.</font>"
-                + "<font color='" + methodHex + "'>" + methodName + "</font>"
-                + "</html>");
-
-        JButton pinBtn     = UITheme.iconButton("\uD83D\uDCCC");
-        JButton historyBtn = UITheme.iconButton("\uD83D\uDD58");
-        JButton closeBtn   = UITheme.iconButton("\u2716");
-        pinBtn.setToolTipText("Pin");
-        historyBtn.setToolTipText("History");
-        closeBtn.setToolTipText("Close");
-        closeBtn.setForeground(UITheme.DANGER);
-        closeBtn.addActionListener(e -> dispose());
-
-        JPanel titlebar = new JPanel(new BorderLayout(8, 0));
-        titlebar.setBackground(UITheme.HEADER_BG);
-        titlebar.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 8));
-
-        JLabel playIcon = new JLabel("\u25B6");
-        playIcon.setFont(UITheme.UI.deriveFont(12f));
-        playIcon.setForeground(UITheme.ACCENT);
-        playIcon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 8));
-
-        JPanel titleLeft = new JPanel(new BorderLayout());
-        titleLeft.setOpaque(false);
-        titleLeft.add(playIcon,   BorderLayout.WEST);
-        titleLeft.add(titleLabel, BorderLayout.CENTER);
-
-        JPanel titleRight = new JPanel();
-        titleRight.setLayout(new BoxLayout(titleRight, BoxLayout.X_AXIS));
-        titleRight.setOpaque(false);
-        titleRight.add(pinBtn);
-        titleRight.add(historyBtn);
-        titleRight.add(closeBtn);
-
-        titlebar.add(titleLeft,  BorderLayout.CENTER);
-        titlebar.add(titleRight, BorderLayout.EAST);
-
-        // ── Hint bar ──────────────────────────────────────────────────────────
-        OperationType op = OperationType.fromMethodName(methodName);
-        JLabel opBadge = buildOpBadge(op);
-
-        JLabel paramCount = new JLabel(params.size() + " parameter" + (params.size() == 1 ? "" : "s"));
-        paramCount.setFont(UITheme.UI_SM);
-        paramCount.setForeground(UITheme.MUTED);
-
-        JLabel hintSep = new JLabel(" \u00B7 ");
-        hintSep.setFont(UITheme.UI_SM);
-        hintSep.setForeground(UITheme.BORDER_SUB);
-
-        JPanel hintBar = new JPanel();
-        hintBar.setLayout(new BoxLayout(hintBar, BoxLayout.X_AXIS));
-        hintBar.setBackground(UITheme.HEADER_BG);
-        hintBar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 1, 0, UITheme.BORDER_SUB),
-                BorderFactory.createEmptyBorder(4, 12, 4, 12)));
-        hintBar.add(opBadge);
-        hintBar.add(hintSep);
-        hintBar.add(paramCount);
-
-        JPanel north = new JPanel(new BorderLayout());
-        north.add(titlebar, BorderLayout.NORTH);
-        north.add(hintBar,  BorderLayout.SOUTH);
-
-        // ── South: agent status + cancel + run ────────────────────────────────
+        // Agent status dot
+        connDot          = new PulsingConnDot();
         agentStatusLabel = new JLabel();
         agentStatusLabel.setFont(UITheme.UI_SM);
         setAgentStatusUnknown();
 
-        JPanel agentPanel = new JPanel();
-        agentPanel.setLayout(new BoxLayout(agentPanel, BoxLayout.X_AXIS));
-        agentPanel.setOpaque(false);
-        JLabel connDot = new JLabel("\u25CF ");
-        connDot.setFont(UITheme.UI_SM);
-        connDot.setForeground(UITheme.SUCCESS);
-        agentPanel.add(agentStatusLabel);
-
+        // Buttons
         cancelButton = UITheme.button("Cancel");
         cancelButton.addActionListener(e -> dispose());
 
-        runButton = UITheme.runButton();
+        runButton = buildRunButton();
         runButton.addActionListener(e -> runExecution());
 
         progressBar = new JProgressBar();
@@ -194,33 +117,182 @@ public class RepoRunnerPopup extends JDialog {
         progressBar.setStringPainted(true);
         progressBar.setString("Executing\u2026");
         progressBar.setForeground(UITheme.SUCCESS);
-        progressBar.setMaximumSize(new Dimension(200, 16));
+        progressBar.setMaximumSize(new Dimension(JBUI.scale(200), JBUI.scale(16)));
 
-        JPanel south = new JPanel(new BorderLayout(10, 0));
-        south.setBackground(UITheme.TOOLBAR);
-        south.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, UITheme.BORDER_SUB),
-                BorderFactory.createEmptyBorder(8, 12, 8, 12)));
+        // Assemble root
+        JPanel root = new JPanel(new BorderLayout());
+        root.add(buildTitleBar(params), BorderLayout.NORTH);
+        root.add(tabs,                  BorderLayout.CENTER);
+        root.add(buildSouthBar(),       BorderLayout.SOUTH);
+        setContentPane(root);
+    }
+
+    // =========================================================================
+    // Layout
+    // =========================================================================
+
+    private JPanel buildTitleBar(List<ParameterDef> params) {
+        // Gradient titlebar
+        JPanel titlebar = new JPanel(new BorderLayout(JBUI.scale(8), 0)) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setPaint(new GradientPaint(0, 0,
+                        new JBColor(new Color(0xEEF2FF), new Color(0x1A1A2E)),
+                        getWidth(), 0,
+                        new JBColor(new Color(0xF5F3FF), new Color(0x16213E))));
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        titlebar.setOpaque(false);
+        titlebar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0,
+                        new JBColor(new Color(0xC7D2FE), new Color(0x312E81))),
+                JBUI.Borders.empty(10, 14, 10, 10)));
+
+        // Play icon
+        JLabel playIcon = new JLabel("\u25B6");
+        playIcon.setFont(UITheme.UI.deriveFont(12f));
+        playIcon.setForeground(INDIGO);
+        playIcon.setBorder(JBUI.Borders.empty(0, 0, 0, 8));
+
+        // Title
+        JLabel titleLabel = new JLabel();
+        titleLabel.setFont(UITheme.MONO_XS.deriveFont(Font.BOLD, 13f));
+        titleLabel.setText("<html>"
+                + "<font color='" + UITheme.toHex(UITheme.GOLD) + "'>" + simpleName(repositoryClass) + "</font>"
+                + "<font color='" + UITheme.toHex(UITheme.MUTED) + "'>.</font>"
+                + "<font color='" + UITheme.toHex(INDIGO) + "'>" + methodName + "</font>"
+                + "</html>");
+
+        JPanel titleLeft = new JPanel(new BorderLayout());
+        titleLeft.setOpaque(false);
+        titleLeft.add(playIcon,   BorderLayout.WEST);
+        titleLeft.add(titleLabel, BorderLayout.CENTER);
+
+        // Hint row (op badge + param count)
+        OperationType op    = OperationType.fromMethodName(methodName);
+        JLabel opBadge      = buildOpBadge(op);
+        JLabel paramCount   = new JLabel(params.size() + " parameter" + (params.size() == 1 ? "" : "s"));
+        paramCount.setFont(UITheme.UI_SM);
+        paramCount.setForeground(UITheme.MUTED);
+        JLabel dot = new JLabel("  \u00B7  ");
+        dot.setFont(UITheme.UI_SM);
+        dot.setForeground(UITheme.MUTED);
+
+        JPanel hintRow = new JPanel();
+        hintRow.setOpaque(false);
+        hintRow.setLayout(new BoxLayout(hintRow, BoxLayout.X_AXIS));
+        hintRow.add(opBadge);
+        hintRow.add(dot);
+        hintRow.add(paramCount);
+
+        JPanel titleCenter = new JPanel(new BorderLayout(0, JBUI.scale(4)));
+        titleCenter.setOpaque(false);
+        titleCenter.add(titleLeft, BorderLayout.NORTH);
+        titleCenter.add(hintRow,   BorderLayout.SOUTH);
+
+        // Window buttons
+        JButton pinBtn     = UITheme.iconButton("\uD83D\uDCCC");
+        JButton closeBtn   = UITheme.iconButton("\u2716");
+        pinBtn.setToolTipText("Pin");
+        closeBtn.setToolTipText("Close");
+        closeBtn.setForeground(ROSE);
+        closeBtn.addActionListener(e -> dispose());
+
+        JPanel titleRight = new JPanel();
+        titleRight.setLayout(new BoxLayout(titleRight, BoxLayout.X_AXIS));
+        titleRight.setOpaque(false);
+        titleRight.add(pinBtn);
+        titleRight.add(closeBtn);
+
+        titlebar.add(titleCenter, BorderLayout.CENTER);
+        titlebar.add(titleRight,  BorderLayout.EAST);
+        return titlebar;
+    }
+
+    private JPanel buildSouthBar() {
+        JPanel connRow = new JPanel();
+        connRow.setLayout(new BoxLayout(connRow, BoxLayout.X_AXIS));
+        connRow.setOpaque(false);
+        connRow.add(connDot);
+        connRow.add(Box.createHorizontalStrut(JBUI.scale(6)));
+        connRow.add(agentStatusLabel);
 
         JPanel southRight = new JPanel();
         southRight.setLayout(new BoxLayout(southRight, BoxLayout.X_AXIS));
         southRight.setOpaque(false);
         southRight.add(progressBar);
-        southRight.add(Box.createHorizontalStrut(8));
+        southRight.add(Box.createHorizontalStrut(JBUI.scale(8)));
         southRight.add(cancelButton);
-        southRight.add(Box.createHorizontalStrut(4));
+        southRight.add(Box.createHorizontalStrut(JBUI.scale(4)));
         southRight.add(runButton);
 
-        south.add(agentStatusLabel, BorderLayout.WEST);
-        south.add(southRight,       BorderLayout.EAST);
-
-        // ── Root ──────────────────────────────────────────────────────────────
-        JPanel root = new JPanel(new BorderLayout(0, 0));
-        root.add(north, BorderLayout.NORTH);
-        root.add(tabs,  BorderLayout.CENTER);
-        root.add(south, BorderLayout.SOUTH);
-        setContentPane(root);
+        JPanel south = new JPanel(new BorderLayout(JBUI.scale(10), 0));
+        south.setBackground(UITheme.TOOLBAR);
+        south.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UITheme.BORDER_SUB),
+                JBUI.Borders.empty(8, 12)));
+        south.add(connRow,    BorderLayout.WEST);
+        south.add(southRight, BorderLayout.EAST);
+        return south;
     }
+
+    private JButton buildRunButton() {
+        JButton btn = new JButton("  Run \u25B6  ") {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color c1 = isEnabled() ? INDIGO : UITheme.BORDER_SUB;
+                Color c2 = isEnabled() ? VIOLET : UITheme.BORDER_SUB;
+                g2.setPaint(new GradientPaint(0, 0, c1, getWidth(), 0, c2));
+                g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(6), JBUI.scale(6));
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        btn.setFont(btn.getFont().deriveFont(Font.BOLD, 12f));
+        btn.setForeground(Color.WHITE);
+        btn.setOpaque(false);
+        btn.setContentAreaFilled(false);
+        btn.setBorderPainted(false);
+        btn.setFocusPainted(false);
+        btn.setBorder(JBUI.Borders.empty(5, 14));
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return btn;
+    }
+
+    private JLabel buildOpBadge(OperationType op) {
+        String text;
+        Color  fg;
+        Color  bg;
+        if (op == OperationType.READ)       { text = "READ";  fg = TEAL;  bg = TEAL_PALE;  }
+        else if (op == OperationType.WRITE) { text = "WRITE"; fg = AMBER; bg = AMBER_PALE; }
+        else                                { text = "?";     fg = UITheme.MUTED; bg = UITheme.BORDER_SUB; }
+
+        JLabel badge = new JLabel(text) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getBackground());
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), JBUI.scale(4), JBUI.scale(4));
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        badge.setFont(UITheme.UI_SM.deriveFont(Font.BOLD));
+        badge.setForeground(fg);
+        badge.setBackground(bg);
+        badge.setOpaque(false);
+        badge.setBorder(JBUI.Borders.empty(2, 8));
+        return badge;
+    }
+
+    // =========================================================================
+    // Display
+    // =========================================================================
 
     public void display(Point anchor) {
         if (anchor != null) positionNearAnchor(anchor);
@@ -228,28 +300,25 @@ public class RepoRunnerPopup extends JDialog {
         setVisible(true);
         toFront();
 
-        // Escape → close
         getRootPane().registerKeyboardAction(
                 e -> dispose(),
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
 
-        // Ctrl+Enter → run
         int mask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
         getRootPane().registerKeyboardAction(
                 e -> { if (runButton.isEnabled()) runExecution(); },
                 KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, mask),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
 
+        connDot.start();
         ApplicationManager.getApplication().executeOnPooledThread(this::refreshAgentStatus);
     }
 
     private void positionNearAnchor(Point anchor) {
         Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
-        int x = anchor.x + 16;
-        int y = anchor.y - POPUP_HEIGHT / 4;
-        x = Math.max(0, Math.min(x, screen.width  - POPUP_WIDTH));
-        y = Math.max(0, Math.min(y, screen.height - POPUP_HEIGHT));
+        int x = Math.max(0, Math.min(anchor.x + 16, screen.width  - POPUP_WIDTH));
+        int y = Math.max(0, Math.min(anchor.y - POPUP_HEIGHT / 4, screen.height - POPUP_HEIGHT));
         setLocation(x, y);
     }
 
@@ -330,8 +399,7 @@ public class RepoRunnerPopup extends JDialog {
             errorPanel.setError(
                     "Received an auth error from: " + baseUrl + "\n\n"
                     + "The RepoBuddy agent server never performs authentication \u2014 this 401/403\n"
-                    + "means something ELSE is listening on port "
-                    + URI.create(baseUrl).getPort() + " (not the RepoBuddy agent).\n\n"
+                    + "means something ELSE is listening on that port (not the RepoBuddy agent).\n\n"
                     + "Fix: ensure the agent is running on a free port.\n"
                     + "Raw error: " + msg);
         } else {
@@ -341,11 +409,11 @@ public class RepoRunnerPopup extends JDialog {
     }
 
     // =========================================================================
-    // Agent status indicator (in south bar)
+    // Agent status
     // =========================================================================
 
     private void refreshAgentStatus() {
-        String url = SpringAppUrlResolver.resolve(project);
+        String  url       = SpringAppUrlResolver.resolve(project);
         boolean reachable = url != null && isPortReachable(url);
         SwingUtilities.invokeLater(() -> {
             if (reachable) setAgentStatusOnline();
@@ -354,52 +422,30 @@ public class RepoRunnerPopup extends JDialog {
     }
 
     private void setAgentStatusOnline() {
-        String url = SpringAppUrlResolver.resolve(project);
-        String host = url != null ? URI.create(url).getHost() + ":" + URI.create(url).getPort() : "localhost";
-        agentStatusLabel.setText("\u25CF  Connected \u00B7 " + host);
+        String url  = SpringAppUrlResolver.resolve(project);
+        String host = url != null
+                ? URI.create(url).getHost() + ":" + URI.create(url).getPort()
+                : "localhost";
+        agentStatusLabel.setText("Connected \u00B7 " + host);
         agentStatusLabel.setForeground(UITheme.SUCCESS);
+        connDot.setOnline(true);
     }
 
     private void setAgentStatusOffline() {
-        agentStatusLabel.setText("\u25CF  Agent Offline");
+        agentStatusLabel.setText("Agent Offline");
         agentStatusLabel.setForeground(UITheme.DANGER);
+        connDot.setOnline(false);
     }
 
     private void setAgentStatusUnknown() {
-        agentStatusLabel.setText("\u25CF  Checking\u2026");
+        agentStatusLabel.setText("Checking\u2026");
         agentStatusLabel.setForeground(UITheme.MUTED);
+        connDot.setOnline(null);
     }
 
     // =========================================================================
     // Helpers
     // =========================================================================
-
-    private JLabel buildOpBadge(OperationType op) {
-        String text; Color fg, bg;
-        if (op == OperationType.READ) {
-            text = "READ";  fg = UITheme.SUCCESS; bg = UITheme.SUCCESS_SUB;
-        } else if (op == OperationType.WRITE) {
-            text = "WRITE"; fg = UITheme.WARNING; bg = UITheme.WARNING_SUB;
-        } else {
-            text = "?";     fg = UITheme.MUTED;   bg = UITheme.BORDER_SUB;
-        }
-        JLabel badge = new JLabel(text) {
-            @Override protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getBackground());
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 4, 4);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        badge.setFont(UITheme.UI_SM.deriveFont(Font.BOLD));
-        badge.setForeground(fg);
-        badge.setBackground(bg);
-        badge.setOpaque(false);
-        badge.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
-        return badge;
-    }
 
     private void resetLoadingState() {
         progressBar.setIndeterminate(false);
@@ -432,5 +478,57 @@ public class RepoRunnerPopup extends JDialog {
     private static String simpleName(String fqn) {
         int dot = fqn.lastIndexOf('.');
         return dot >= 0 ? fqn.substring(dot + 1) : fqn;
+    }
+
+    // =========================================================================
+    // Inner: PulsingConnDot
+    // =========================================================================
+
+    private static final class PulsingConnDot extends JComponent {
+        private Boolean online = null;
+        private double  phase  = 0.0;
+        private Timer   timer;
+
+        PulsingConnDot() {
+            setOpaque(false);
+            setPreferredSize(new Dimension(JBUI.scale(12), JBUI.scale(12)));
+        }
+
+        void start() {
+            if (timer != null && timer.isRunning()) return;
+            timer = new Timer(50, e -> { phase += 0.12; repaint(); });
+            timer.start();
+        }
+
+        void setOnline(Boolean status) {
+            this.online = status;
+            repaint();
+        }
+
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int cx = getWidth()  / 2;
+            int cy = getHeight() / 2;
+            int r  = JBUI.scale(4);
+
+            JBColor dotColor;
+            if (Boolean.TRUE.equals(online))  dotColor = new JBColor(new Color(0x0D9488), new Color(0x14B8A6));
+            else if (Boolean.FALSE.equals(online)) dotColor = new JBColor(new Color(0xE11D48), new Color(0xFB7185));
+            else                              dotColor = new JBColor(new Color(0x9CA3AF), new Color(0x6B7280));
+
+            if (Boolean.TRUE.equals(online)) {
+                double pulse  = Math.sin(phase);
+                int    outerR = r + (int)(r * 0.7 * (pulse * 0.5 + 0.5));
+                int    alpha  = (int)(70 * (1.0 - (pulse * 0.5 + 0.5)));
+                g2.setColor(new JBColor(
+                        new Color(dotColor.getRed(), dotColor.getGreen(), dotColor.getBlue(), alpha),
+                        new Color(dotColor.getRed(), dotColor.getGreen(), dotColor.getBlue(), alpha)));
+                g2.fillOval(cx - outerR, cy - outerR, outerR * 2, outerR * 2);
+            }
+            g2.setColor(dotColor);
+            g2.fillOval(cx - r, cy - r, r * 2, r * 2);
+            g2.dispose();
+        }
     }
 }
