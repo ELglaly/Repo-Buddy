@@ -2,7 +2,6 @@ package com.repoinspector.constants;
 
 import java.util.Set;
 
-/** SQL keywords used for syntax highlighting in the SQL log panel. Single source of truth. */
 public final class SqlKeywords {
 
     private SqlKeywords() {}

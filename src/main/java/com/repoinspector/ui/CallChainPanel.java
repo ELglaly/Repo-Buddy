@@ -228,15 +228,21 @@ public class CallChainPanel extends JPanel implements Disposable {
         callChainTree.setCellRenderer(new CallChainTreeRenderer());
         callChainTree.setRootVisible(true);
         callChainTree.setShowsRootHandles(true);
-        callChainTree.setRowHeight(JBUI.scale(24));
+        callChainTree.setRowHeight(0);
         callChainTree.setBackground(UITheme.PANEL);
+        callChainTree.setBorder(JBUI.Borders.empty(8));
+        callChainTree.putClientProperty("JTree.lineStyle", "None");
+        callChainTree.setToggleClickCount(1);
         callChainTree.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) navigateToSelected();
             }
         });
 
-        add(new JBScrollPane(callChainTree), BorderLayout.CENTER);
+        JBScrollPane treeScrollPane = new JBScrollPane(callChainTree);
+        treeScrollPane.setBorder(BorderFactory.createEmptyBorder());
+        treeScrollPane.getViewport().setBackground(UITheme.PANEL);
+        add(treeScrollPane, BorderLayout.CENTER);
 
         // ── Summary bar ───────────────────────────────────────────────────────
         summaryBar = new JPanel();

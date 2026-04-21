@@ -90,14 +90,6 @@ public final class DefaultEndpointAnalysisService implements EndpointAnalysisSer
         return holder.get();
     }
 
-    @Override
-    public boolean isEndpointMethod(PsiMethod method) {
-        for (String fqn : SpringAnnotations.HTTP_MAPPING_FQNS) {
-            if (method.hasAnnotation(fqn)) return true;
-        }
-        return false;
-    }
-
     // ── private helpers ────────────────────────────────────────────────────────
 
     private static String extractClassPath(@NotNull PsiClass cls) {

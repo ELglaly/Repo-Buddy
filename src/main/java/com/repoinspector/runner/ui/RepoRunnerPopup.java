@@ -17,6 +17,8 @@ import com.repoinspector.ui.UITheme;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.KeyEvent;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -63,6 +65,7 @@ public class RepoRunnerPopup extends JDialog {
     private final JButton        cancelButton;
     private final PulsingConnDot connDot;
     private final List<Timer>    managedTimers = new ArrayList<>();
+    private Point                dragOffset;
 
     private static Window resolveParentWindow(Project project) {
         IdeFrame ideFrame = WindowManager.getInstance().getIdeFrame(project);
@@ -80,6 +83,7 @@ public class RepoRunnerPopup extends JDialog {
         this.repositoryClass = repositoryClass;
         this.methodName      = methodName;
 
+        setUndecorated(true);
         setSize(POPUP_WIDTH, POPUP_HEIGHT);
         setMinimumSize(new Dimension(680, 520));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
@@ -93,10 +97,19 @@ public class RepoRunnerPopup extends JDialog {
         // Tabs
         tabs = new JTabbedPane();
         tabs.setFont(UITheme.UI.deriveFont(Font.PLAIN, 12f));
-        tabs.addTab("\u2699 Parameters", new JScrollPane(parameterForm));
-        tabs.addTab("\u26C1 SQL Logs",   sqlPanel);
-        tabs.addTab("{} Result",         resultPanel);
-        tabs.addTab("\u2716 Errors",     errorPanel);
+        tabs.setBackground(UITheme.PANEL);
+        tabs.setForeground(UITheme.INK);
+        tabs.setBorder(JBUI.Borders.empty(10, 10, 0, 10));
+
+        JScrollPane parameterScroll = new JScrollPane(parameterForm);
+        parameterScroll.setBorder(BorderFactory.createEmptyBorder());
+        parameterScroll.getViewport().setBackground(UITheme.PANEL);
+
+        tabs.addTab("\u2699 Parameters", wrapTabContent(parameterScroll));
+        tabs.addTab("\u26C1 SQL Logs",   wrapTabContent(sqlPanel));
+        tabs.addTab("{} Result",         wrapTabContent(resultPanel));
+        tabs.addTab("\u2716 Errors",     wrapTabContent(errorPanel));
+        installTabDecorations();
 
         // Agent status dot
         connDot          = new PulsingConnDot();
@@ -121,6 +134,8 @@ public class RepoRunnerPopup extends JDialog {
 
         // Assemble root
         JPanel root = new JPanel(new BorderLayout());
+        root.setBackground(UITheme.BG);
+        root.setBorder(BorderFactory.createLineBorder(UITheme.BORDER_SUB, 1));
         root.add(buildTitleBar(params), BorderLayout.NORTH);
         root.add(tabs,                  BorderLayout.CENTER);
         root.add(buildSouthBar(),       BorderLayout.SOUTH);
@@ -159,15 +174,17 @@ public class RepoRunnerPopup extends JDialog {
         playIcon.setBorder(JBUI.Borders.empty(0, 0, 0, 8));
 
         // Title
-        JLabel titleLabel = new JLabel();
-        titleLabel.setFont(UITheme.MONO_XS.deriveFont(Font.BOLD, 13f));
-        titleLabel.setText("<html>"
-                + "<font color='" + UITheme.toHex(UITheme.GOLD) + "'>" + simpleName(repositoryClass) + "</font>"
-                + "<font color='" + UITheme.toHex(UITheme.MUTED) + "'>.</font>"
-                + "<font color='" + UITheme.toHex(INDIGO) + "'>" + methodName + "</font>"
-                + "</html>");
+        JLabel titleLabel = new JLabel(UITheme.popupHeaderHtml(
+                simpleName(repositoryClass),
+                methodName,
+                params.size() + " arg" + (params.size() == 1 ? "" : "s")));
+        titleLabel.setFont(UITheme.UI_BOLD.deriveFont(14f));
 
-        JPanel titleLeft = new JPanel(new BorderLayout());
+        JLabel subLabel = new JLabel("Execute repository method against the live Spring application");
+        subLabel.setFont(UITheme.UI_SM);
+        subLabel.setForeground(UITheme.MUTED);
+
+        JPanel titleLeft = new JPanel(new BorderLayout(JBUI.scale(8), 0));
         titleLeft.setOpaque(false);
         titleLeft.add(playIcon,   BorderLayout.WEST);
         titleLeft.add(titleLabel, BorderLayout.CENTER);
@@ -192,24 +209,29 @@ public class RepoRunnerPopup extends JDialog {
         JPanel titleCenter = new JPanel(new BorderLayout(0, JBUI.scale(4)));
         titleCenter.setOpaque(false);
         titleCenter.add(titleLeft, BorderLayout.NORTH);
+        titleCenter.add(subLabel,  BorderLayout.CENTER);
         titleCenter.add(hintRow,   BorderLayout.SOUTH);
 
         // Window buttons
-        JButton pinBtn     = UITheme.iconButton("\uD83D\uDCCC");
-        JButton closeBtn   = UITheme.iconButton("\u2716");
-        pinBtn.setToolTipText("Pin");
+        JButton closeBtn = buildWindowControl("\u2715", ROSE, UITheme.DANGER_SUB);
         closeBtn.setToolTipText("Close");
-        closeBtn.setForeground(ROSE);
         closeBtn.addActionListener(e -> dispose());
 
-        JPanel titleRight = new JPanel();
-        titleRight.setLayout(new BoxLayout(titleRight, BoxLayout.X_AXIS));
+        JPanel titleRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(4), 0));
         titleRight.setOpaque(false);
-        titleRight.add(pinBtn);
         titleRight.add(closeBtn);
 
-        titlebar.add(titleCenter, BorderLayout.CENTER);
-        titlebar.add(titleRight,  BorderLayout.EAST);
+        JPanel leftWrap = new JPanel(new BorderLayout());
+        leftWrap.setOpaque(false);
+        leftWrap.add(titleCenter, BorderLayout.WEST);
+
+        JPanel rightWrap = new JPanel(new BorderLayout());
+        rightWrap.setOpaque(false);
+        rightWrap.add(titleRight, BorderLayout.NORTH);
+
+        titlebar.add(leftWrap,    BorderLayout.CENTER);
+        titlebar.add(rightWrap,   BorderLayout.EAST);
+        installWindowDragging(titlebar);
         return titlebar;
     }
 
@@ -240,27 +262,128 @@ public class RepoRunnerPopup extends JDialog {
         return south;
     }
 
+    private JComponent wrapTabContent(JComponent content) {
+        JPanel shell = new JPanel(new BorderLayout());
+        shell.setOpaque(false);
+        shell.setBorder(JBUI.Borders.empty(0, 0, 10, 0));
+
+        JPanel card = new JPanel(new BorderLayout());
+        card.setBackground(UITheme.PANEL);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(UITheme.BORDER_SUB, 1),
+                JBUI.Borders.empty()));
+        card.add(content, BorderLayout.CENTER);
+
+        shell.add(card, BorderLayout.CENTER);
+        return shell;
+    }
+
+    private void installTabDecorations() {
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            tabs.setTabComponentAt(i, createTabChip(tabs.getTitleAt(i), i == 0));
+        }
+        tabs.addChangeListener(e -> refreshTabDecorations());
+    }
+
+    private void refreshTabDecorations() {
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            tabs.setTabComponentAt(i, createTabChip(stripHtmlBold(tabs.getTitleAt(i)), i == tabs.getSelectedIndex()));
+        }
+    }
+
+    private JComponent createTabChip(String text, boolean active) {
+        JLabel label = new JLabel(text);
+        label.setFont(active ? UITheme.UI_BOLD.deriveFont(12f) : UITheme.UI.deriveFont(12f));
+        label.setForeground(active ? UITheme.ACCENT : UITheme.INK_DIM);
+
+        JPanel chip = new JPanel(new FlowLayout(FlowLayout.CENTER, JBUI.scale(10), JBUI.scale(6))) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color bg = active ? UITheme.ACCENT_SUB : UITheme.PANEL_2;
+                Color border = active ? UITheme.ACCENT : UITheme.BORDER_SUB;
+                g2.setColor(bg);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), JBUI.scale(14), JBUI.scale(14));
+                g2.setColor(border);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(14), JBUI.scale(14));
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        chip.setOpaque(false);
+        chip.add(label);
+        return chip;
+    }
+
+    private static String stripHtmlBold(String title) {
+        if (title.startsWith("<html><b>") && title.endsWith("</b></html>")) {
+            return title.substring(9, title.length() - 11);
+        }
+        return title;
+    }
+
+    private JButton buildWindowControl(String glyph, Color fg, Color hoverBg) {
+        JButton button = new JButton(glyph);
+        button.setFont(UITheme.UI_BOLD.deriveFont(13f));
+        button.setForeground(fg);
+        button.setPreferredSize(new Dimension(JBUI.scale(28), JBUI.scale(24)));
+        button.setMinimumSize(new Dimension(JBUI.scale(28), JBUI.scale(24)));
+        button.setMaximumSize(new Dimension(JBUI.scale(28), JBUI.scale(24)));
+        button.setFocusPainted(false);
+        button.setBorderPainted(false);
+        button.setOpaque(false);
+        button.setContentAreaFilled(false);
+        button.setBackground(new Color(0, 0, 0, 0));
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        UITheme.addHoverEffect(button, new Color(0, 0, 0, 0), hoverBg);
+        return button;
+    }
+
+    private void installWindowDragging(JComponent handle) {
+        MouseAdapter dragHandler = new MouseAdapter() {
+            @Override public void mousePressed(MouseEvent e) {
+                dragOffset = e.getPoint();
+            }
+
+            @Override public void mouseDragged(MouseEvent e) {
+                if (dragOffset == null) return;
+                Point screen = e.getLocationOnScreen();
+                setLocation(screen.x - dragOffset.x, screen.y - dragOffset.y);
+            }
+        };
+        handle.addMouseListener(dragHandler);
+        handle.addMouseMotionListener(dragHandler);
+    }
+
     private JButton buildRunButton() {
-        JButton btn = new JButton("  Run \u25B6  ") {
+        JButton btn = new JButton("Run") {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 Color c1 = isEnabled() ? INDIGO : UITheme.BORDER_SUB;
                 Color c2 = isEnabled() ? VIOLET : UITheme.BORDER_SUB;
                 g2.setPaint(new GradientPaint(0, 0, c1, getWidth(), 0, c2));
-                g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(6), JBUI.scale(6));
+                g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(10), JBUI.scale(10));
+
+                if (isEnabled()) {
+                    g2.setColor(new Color(255, 255, 255, 32));
+                    g2.fillRoundRect(1, 1, getWidth() - 3, Math.max(8, getHeight() / 2), JBUI.scale(10), JBUI.scale(10));
+                }
+
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
-        btn.setFont(btn.getFont().deriveFont(Font.BOLD, 12f));
+        btn.setFont(UITheme.UI_BOLD.deriveFont(13f));
         btn.setForeground(Color.WHITE);
         btn.setOpaque(false);
         btn.setContentAreaFilled(false);
         btn.setBorderPainted(false);
         btn.setFocusPainted(false);
-        btn.setBorder(JBUI.Borders.empty(5, 14));
+        btn.setBorder(JBUI.Borders.empty(8, 18));
+        btn.setPreferredSize(new Dimension(JBUI.scale(96), JBUI.scale(34)));
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setText("Run  \u25B6");
         return btn;
     }
 
@@ -313,6 +436,14 @@ public class RepoRunnerPopup extends JDialog {
 
         connDot.start();
         ApplicationManager.getApplication().executeOnPooledThread(this::refreshAgentStatus);
+    }
+
+    @Override
+    public void dispose() {
+        connDot.stop();
+        managedTimers.forEach(Timer::stop);
+        managedTimers.clear();
+        super.dispose();
     }
 
     private void positionNearAnchor(Point anchor) {
@@ -457,6 +588,7 @@ public class RepoRunnerPopup extends JDialog {
         String title = tabs.getTitleAt(index);
         if (!title.startsWith("<html>"))
             tabs.setTitleAt(index, "<html><b>" + title + "</b></html>");
+        refreshTabDecorations();
     }
 
     private void resetTabTitles() {
@@ -465,6 +597,7 @@ public class RepoRunnerPopup extends JDialog {
             if (title.startsWith("<html><b>") && title.endsWith("</b></html>"))
                 tabs.setTitleAt(i, title.substring(9, title.length() - 11));
         }
+        refreshTabDecorations();
     }
 
     private static boolean isPortReachable(String baseUrl) {
@@ -498,6 +631,12 @@ public class RepoRunnerPopup extends JDialog {
             if (timer != null && timer.isRunning()) return;
             timer = new Timer(50, e -> { phase += 0.12; repaint(); });
             timer.start();
+        }
+
+        void stop() {
+            if (timer == null) return;
+            timer.stop();
+            timer = null;
         }
 
         void setOnline(Boolean status) {

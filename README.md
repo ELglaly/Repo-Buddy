@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=gradle)
-![Version](https://img.shields.io/badge/version-1.0.2-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.3-blue?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![IntelliJ](https://img.shields.io/badge/IntelliJ-2024.1%2B-orange?style=for-the-badge&logo=intellij-idea)
 ![Java](https://img.shields.io/badge/Java-17%2B-red?style=for-the-badge&logo=openjdk)
@@ -250,6 +250,12 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 ---
 
 ## Changelog
+
+### 1.0.3
+- Refined the Repository Usage table with cleaner badges, softer typography, and a more polished visual layout
+- Redesigned the Call Chain Tracer tree for a more professional and readable presentation
+- Improved the repository runner popup UI with cleaner tabs, cards, and better visual hierarchy
+- Updated the Marketplace plugin description and presentation metadata
 
 ### 1.0.2
 - **Current File filter** in Repository Usage — scope the table to the repository file you have open with one click

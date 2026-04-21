@@ -489,12 +489,23 @@ public class RepoInspectorPanel extends JPanel implements Disposable {
         PsiMethod method = methodList.get(mr);
         if (method == null || !method.isValid()) return;
 
-        ApplicationManager.getApplication().runReadAction(() -> {
-            PsiClass cls = method.getContainingClass();
-            String fqn   = (cls != null && cls.getQualifiedName() != null) ? cls.getQualifiedName() : "";
-            List<ParameterDef> params = ApplicationManager.getApplication()
-                    .getService(ParameterExtractionService.class).extract(method);
-            SwingUtilities.invokeLater(() -> new RepoRunnerPopup(project, fqn, method.getName(), params).display(null));
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            record PopupData(String fqn, String methodName, List<ParameterDef> params) {}
+
+            PopupData data = ApplicationManager.getApplication().runReadAction(
+                    (com.intellij.openapi.util.Computable<PopupData>) () -> {
+                        if (!method.isValid()) return null;
+                        PsiClass cls = method.getContainingClass();
+                        String fqn = (cls != null && cls.getQualifiedName() != null) ? cls.getQualifiedName() : "";
+                        List<ParameterDef> params = ApplicationManager.getApplication()
+                                .getService(ParameterExtractionService.class).extract(method);
+                        return new PopupData(fqn, method.getName(), params);
+                    });
+
+            if (data == null) return;
+
+            SwingUtilities.invokeLater(() ->
+                    new RepoRunnerPopup(project, data.fqn(), data.methodName(), data.params()).display(null));
         });
     }
 
@@ -796,10 +807,8 @@ public class RepoInspectorPanel extends JPanel implements Disposable {
         @Override public Component getTableCellRendererComponent(
                 JTable t, Object v, boolean sel, boolean focus, int r, int c) {
             super.getTableCellRendererComponent(t, v, sel, focus, r, c);
-            setFont(FONT_MONO.deriveFont(Font.BOLD));
-            if (!sel) setForeground(UITheme.GOLD);
-            setBorder(JBUI.Borders.empty(0, 8, 0, 4));
-            return this;
+            setText("");
+            return new TextBadgeCell(v == null ? "" : String.valueOf(v), sel, BadgeStyle.REPO);
         }
     }
 
@@ -807,10 +816,8 @@ public class RepoInspectorPanel extends JPanel implements Disposable {
         @Override public Component getTableCellRendererComponent(
                 JTable t, Object v, boolean sel, boolean focus, int r, int c) {
             super.getTableCellRendererComponent(t, v, sel, focus, r, c);
-            setFont(FONT_MONO);
-            if (!sel) setForeground(INDIGO);
-            setBorder(JBUI.Borders.empty(0, 4));
-            return this;
+            setText("");
+            return new TextBadgeCell(v == null ? "" : String.valueOf(v), sel, BadgeStyle.METHOD);
         }
     }
 
@@ -818,10 +825,96 @@ public class RepoInspectorPanel extends JPanel implements Disposable {
         @Override public Component getTableCellRendererComponent(
                 JTable t, Object v, boolean sel, boolean focus, int r, int c) {
             super.getTableCellRendererComponent(t, v, sel, focus, r, c);
-            setFont(FONT_MONO.deriveFont(11f));
-            if (!sel) setForeground(UITheme.INK_DIM);
-            setBorder(JBUI.Borders.empty(0, 4));
-            return this;
+            setText("");
+            return new TextBadgeCell(v == null ? "" : String.valueOf(v), sel, BadgeStyle.SIGNATURE);
+        }
+    }
+
+    private enum BadgeStyle { REPO, METHOD, SIGNATURE }
+
+    private static final class TextBadgeCell extends JComponent {
+        private final String     text;
+        private final boolean    sel;
+        private final BadgeStyle style;
+
+        TextBadgeCell(String text, boolean sel, BadgeStyle style) {
+            this.text = text;
+            this.sel = sel;
+            this.style = style;
+            setOpaque(false);
+        }
+
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            Color bg;
+            Color fg;
+            Font font;
+            int leftPad;
+            int rightPad;
+            int arc;
+            if (style == BadgeStyle.REPO) {
+                bg = UITheme.GOLD_SUB;
+                fg = UITheme.GOLD;
+                font = UITheme.UI_BOLD.deriveFont(12f);
+                leftPad = JBUI.scale(10);
+                rightPad = JBUI.scale(10);
+                arc = JBUI.scale(14);
+            } else if (style == BadgeStyle.METHOD) {
+                bg = INDIGO_PALE;
+                fg = INDIGO;
+                font = UITheme.UI_BOLD.deriveFont(12f);
+                leftPad = JBUI.scale(10);
+                rightPad = JBUI.scale(10);
+                arc = JBUI.scale(14);
+            } else {
+                bg = UITheme.PANEL_2;
+                fg = UITheme.INK_DIM;
+                font = UITheme.UI_SM.deriveFont(11f);
+                leftPad = JBUI.scale(8);
+                rightPad = JBUI.scale(8);
+                arc = JBUI.scale(10);
+            }
+
+            g2.setFont(font);
+            FontMetrics fm = g2.getFontMetrics();
+            String display = clipText(fm, text, Math.max(JBUI.scale(48), getWidth() - leftPad - rightPad - JBUI.scale(6)));
+            int badgeHeight = style == BadgeStyle.SIGNATURE ? JBUI.scale(18) : JBUI.scale(20);
+            int badgeWidth = Math.min(getWidth() - JBUI.scale(8), fm.stringWidth(display) + leftPad + rightPad);
+            int x = JBUI.scale(4);
+            int y = (getHeight() - badgeHeight) / 2;
+
+            if (sel) {
+                g2.setColor(UITheme.SELECTION);
+                g2.fillRoundRect(x, y, badgeWidth, badgeHeight, arc, arc);
+                g2.setColor(Color.WHITE);
+            } else {
+                g2.setColor(bg);
+                g2.fillRoundRect(x, y, badgeWidth, badgeHeight, arc, arc);
+                g2.setColor(fg);
+            }
+
+            int textY = y + (badgeHeight + fm.getAscent() - fm.getDescent()) / 2;
+            g2.drawString(display, x + leftPad, textY);
+            g2.dispose();
+        }
+
+        private static String clipText(FontMetrics fm, String value, int maxWidth) {
+            if (value == null || value.isEmpty()) return "";
+            if (fm.stringWidth(value) <= maxWidth) return value;
+
+            String ellipsis = "...";
+            int ellipsisWidth = fm.stringWidth(ellipsis);
+            int allowed = Math.max(0, maxWidth - ellipsisWidth);
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < value.length(); i++) {
+                char ch = value.charAt(i);
+                if (fm.stringWidth(out.toString() + ch) > allowed) break;
+                out.append(ch);
+            }
+            return out.append(ellipsis).toString();
         }
     }
 
@@ -868,36 +961,61 @@ public class RepoInspectorPanel extends JPanel implements Disposable {
         @Override public Component getTableCellRendererComponent(
                 JTable t, Object v, boolean sel, boolean focus, int r, int c) {
             super.getTableCellRendererComponent(t, v, sel, focus, r, c);
-            setText(""); setHorizontalAlignment(RIGHT);
-            return new CallsDot(v instanceof Integer i ? i : 0, sel);
+            setText("");
+            setHorizontalAlignment(CENTER);
+            return new CallsBadge(v instanceof Integer i ? i : 0, sel);
         }
     }
 
-    private static final class CallsDot extends JComponent {
+    private static final class CallsBadge extends JComponent {
         private final int     count;
         private final boolean sel;
-        CallsDot(int count, boolean sel) { this.count = count; this.sel = sel; setOpaque(false); }
+        CallsBadge(int count, boolean sel) { this.count = count; this.sel = sel; setOpaque(false); }
 
         @Override protected void paintComponent(Graphics g) {
-            if (sel) return;
-            Color dot;
-            if      (count == 0) dot = ROSE;
-            else if (count <= 2) dot = AMBER;
-            else                 dot = TEAL;
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
             String text = String.valueOf(count);
-            g2.setFont(UITheme.UI_SM);
+            g2.setFont(UITheme.UI_SM.deriveFont(Font.BOLD));
             FontMetrics fm = g2.getFontMetrics();
-            int ds  = JBUI.scale(6);
-            int gap = JBUI.scale(4);
-            int tw  = fm.stringWidth(text);
-            int x   = getWidth() - ds - gap - tw - JBUI.scale(8);
-            int cy  = getHeight() / 2;
-            g2.setColor(dot);
-            g2.fillOval(x, cy - ds / 2, ds, ds);
-            g2.setColor(UITheme.INK_DIM);
-            g2.drawString(text, x + ds + gap, cy + fm.getAscent() / 2 - 1);
+            Color bg;
+            Color fg;
+            if (count == 0) {
+                bg = ROSE_PALE;
+                fg = ROSE;
+            } else if (count <= 2) {
+                bg = AMBER_PALE;
+                fg = AMBER;
+            } else {
+                bg = TEAL_PALE;
+                fg = TEAL;
+            }
+
+            int dotSize    = JBUI.scale(8);
+            int gap        = JBUI.scale(6);
+            int textWidth  = fm.stringWidth(text);
+            int pillHeight = JBUI.scale(18);
+            int pillWidth  = Math.max(JBUI.scale(34), textWidth + dotSize + gap + JBUI.scale(14));
+            int x          = (getWidth() - pillWidth) / 2;
+            int y          = (getHeight() - pillHeight) / 2;
+            int arc        = pillHeight;
+            int dotX       = x + JBUI.scale(7);
+            int dotY       = y + (pillHeight - dotSize) / 2;
+            int textX      = dotX + dotSize + gap;
+            int textY      = y + (pillHeight + fm.getAscent() - fm.getDescent()) / 2;
+
+            if (sel) {
+                g2.setColor(UITheme.SELECTION);
+                g2.drawRoundRect(x - 1, y - 1, pillWidth + 1, pillHeight + 1, arc, arc);
+            }
+
+            g2.setColor(bg);
+            g2.fillRoundRect(x, y, pillWidth, pillHeight, arc, arc);
+            g2.setColor(fg);
+            g2.fillOval(dotX, dotY, dotSize, dotSize);
+            g2.drawString(text, textX, textY);
             g2.dispose();
         }
     }

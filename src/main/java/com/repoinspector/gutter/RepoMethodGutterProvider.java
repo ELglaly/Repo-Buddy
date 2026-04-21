@@ -79,9 +79,8 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
     }
 
     // -------------------------------------------------------------------------
-    // Icon selection — delegates to OperationClassifierService (single source of truth)
+    // Icon selection — delegates to OperationClassifierService
     // -------------------------------------------------------------------------
-
     static Icon iconForMethod(PsiMethod method) {
         OperationClassifierService svc =
                 ApplicationManager.getApplication().getService(OperationClassifierService.class);
@@ -96,7 +95,6 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
     // -------------------------------------------------------------------------
     // Tooltip
     // -------------------------------------------------------------------------
-
     private static String buildTooltip(String className, PsiMethod method) {
         String paramSummary = ApplicationManager.getApplication()
                 .getService(ParameterExtractionService.class).summary(method);
@@ -110,21 +108,30 @@ public class RepoMethodGutterProvider implements LineMarkerProvider {
     // -------------------------------------------------------------------------
     // Popup creation
     // -------------------------------------------------------------------------
-
     private static void openRunnerPopup(java.awt.Point screenPoint,
                                         PsiElement element, Project project) {
-        ApplicationManager.getApplication().runReadAction(() -> {
-            PsiMethod method = (PsiMethod) element.getParent();
-            PsiClass cls = method.getContainingClass();
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            record PopupData(String classFqn, String methodName, List<ParameterDef> params) {}
 
-            String classFqn   = (cls != null && cls.getQualifiedName() != null)
-                    ? cls.getQualifiedName() : "";
-            String methodName = method.getName();
-            List<ParameterDef> params = ApplicationManager.getApplication()
-                    .getService(ParameterExtractionService.class).extract(method);
+            PopupData data = ApplicationManager.getApplication().runReadAction(
+                    (com.intellij.openapi.util.Computable<PopupData>) () -> {
+                        PsiMethod method = (PsiMethod) element.getParent();
+                        if (method == null || !method.isValid()) return null;
+
+                        PsiClass cls = method.getContainingClass();
+                        String classFqn = (cls != null && cls.getQualifiedName() != null)
+                                ? cls.getQualifiedName() : "";
+                        String methodName = method.getName();
+                        List<ParameterDef> params = ApplicationManager.getApplication()
+                                .getService(ParameterExtractionService.class).extract(method);
+                        return new PopupData(classFqn, methodName, params);
+                    });
+
+            if (data == null) return;
 
             javax.swing.SwingUtilities.invokeLater(() -> {
-                RepoRunnerPopup popup = new RepoRunnerPopup(project, classFqn, methodName, params);
+                RepoRunnerPopup popup = new RepoRunnerPopup(
+                        project, data.classFqn(), data.methodName(), data.params());
                 popup.display(screenPoint);
             });
         });

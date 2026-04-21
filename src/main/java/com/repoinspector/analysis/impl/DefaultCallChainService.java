@@ -70,10 +70,8 @@ public final class DefaultCallChainService implements CallChainService {
                 .getService(ParameterExtractionService.class);
     }
 
-    // =========================================================================
+    
     // CallChainService API
-    // =========================================================================
-
     @Override
     public List<CallChainNode> getOrAnalyze(EndpointInfo endpoint) {
         String key = cacheKey(endpoint);
@@ -96,10 +94,8 @@ public final class DefaultCallChainService implements CallChainService {
         cache.clear();
     }
 
-    // =========================================================================
+    
     // DFS Analysis
-    // =========================================================================
-
     private List<CallChainNode> analyze(EndpointInfo endpoint) {
         return ApplicationManager.getApplication().runReadAction((Computable<List<CallChainNode>>) () -> {
             List<CallChainNode> result  = new ArrayList<>();
@@ -144,17 +140,15 @@ public final class DefaultCallChainService implements CallChainService {
         }
     }
 
-    // =========================================================================
+    
     // Callee collection
-    // =========================================================================
-
     private CollectResult collectCallees(PsiMethod method, int depth) {
-        List<PsiMethod>    callees      = new ArrayList<>();
+        List<PsiMethod> callees = new ArrayList<>();
         List<CallChainNode> dynamicNodes = new ArrayList<>();
 
         method.accept(new JavaRecursiveElementVisitor() {
             @Override
-            public void visitMethodCallExpression(PsiMethodCallExpression call) {
+            public void visitMethodCallExpression(@NotNull PsiMethodCallExpression call) {
                 super.visitMethodCallExpression(call);
 
                 if (isDynamicBeanAccess(call)) {
@@ -173,10 +167,8 @@ public final class DefaultCallChainService implements CallChainService {
         return new CollectResult(callees, dynamicNodes);
     }
 
-    // =========================================================================
+    
     // Polymorphism resolution
-    // =========================================================================
-
     private PsiMethod resolveToConcreteMethod(PsiMethod method) {
         PsiClass cls = method.getContainingClass();
         if (cls == null) return method;
@@ -199,9 +191,9 @@ public final class DefaultCallChainService implements CallChainService {
         return candidates.get(0);
     }
 
-    // =========================================================================
+    
     // Dynamic bean detection
-    // =========================================================================
+    
 
     private boolean isDynamicBeanAccess(PsiMethodCallExpression call) {
         PsiReferenceExpression methodExpr = call.getMethodExpression();
@@ -222,9 +214,9 @@ public final class DefaultCallChainService implements CallChainService {
         return appCtxClass != null && resolvedClass.isInheritor(appCtxClass, true);
     }
 
-    // =========================================================================
+    
     // Helpers
-    // =========================================================================
+    
 
     private static String cacheKey(EndpointInfo endpoint) {
         return endpoint.controllerName() + "#" + endpoint.methodSignature();
