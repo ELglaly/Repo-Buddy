@@ -3,8 +3,7 @@
 <div align="center">
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=gradle)
-![Version](https://img.shields.io/badge/version-1.0.3-blue?style=for-the-badge)
-![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.4-blue?style=for-the-badge)
 ![IntelliJ](https://img.shields.io/badge/IntelliJ-2024.1%2B-orange?style=for-the-badge&logo=intellij-idea)
 ![Java](https://img.shields.io/badge/Java-17%2B-red?style=for-the-badge&logo=openjdk)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-6DB33F?style=for-the-badge&logo=springboot)
@@ -30,14 +29,14 @@ Every one of those paths is slow, noisy, and indirect.
 
 **RepoBuddy eliminates all of them.**
 
-Click the ▶ gutter icon next to any Spring Data repository method. Fill in the parameters. See the real query result, the captured SQL, and the execution time — right there in the IDE.
+Click the ⌕|✎ gutter icon next to any Spring Data repository method. Fill in the parameters. See the real query result, the captured SQL, and the execution time — right there in the IDE.
 
 ---
 
 ## Features
 
 ### Run Repository Methods Instantly
-- **▶ Gutter icon** on every Spring Data JPA repository method — one click opens the execution popup
+- **⌕|✎ Gutter icon** on every Spring Data JPA repository method — one click opens the execution popup
 - **Live execution against your running app** — a lightweight Java agent plugs into your Spring Boot process; the real JPA context runs the method (no simulation, no mocking)
 - **Execution time** colour-coded green / amber / red (< 100 ms / 100–499 ms / ≥ 500 ms)
 - 
@@ -47,7 +46,7 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **SQL capture** via Hibernate's `StatementInspector` — every statement triggered by the call is intercepted, ordered, and timestamped
 - See the exact queries your method generates — N+1 problems have nowhere to hide
 -  
-<img width="1103" height="828" alt="Screenshot 2026-04-16 092400" src="https://github.com/user-attachments/assets/b0dcbb77-07d9-4b4c-babe-1a256e5262a2" />
+<img width="1128" height="830" alt="Screenshot 2026-04-20 211438" src="https://github.com/user-attachments/assets/41f80680-3aed-4fb3-b19e-de6849edb941" />
 
 
 ### Smart Parameter Input
@@ -61,7 +60,7 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **Per-field dice buttons** for randomising individual parameters
 - **30+ name-hint rules** — recognises hints like `email`, `phone`, `city`, `status`, `uuid`, and maps them to realistic values automatically
 
-<img width="1645" height="667" alt="Screenshot 2026-04-16 092235" src="https://github.com/user-attachments/assets/58114092-75f2-4e27-9b3b-2320987d6e71" />
+<img width="1132" height="833" alt="Screenshot 2026-04-20 210150" src="https://github.com/user-attachments/assets/444253ff-7c50-4722-acf7-9999da3db34e" />
 
 ### Call Chain Tracer
 - Pick any Spring MVC endpoint from the combo box and trace every repository method reachable from it
@@ -73,9 +72,8 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **Full API paths** — endpoint paths now include the controller-level `@RequestMapping` prefix so you see the complete URL (e.g. `/api/v1/users/{id}` instead of `/{id}`)
 - **Clean endpoint display** — the endpoint selector shows only `[VERB] /path` without the controller class name and method signature
 
-   <img width="1640" height="605" alt="Screenshot 2026-04-16 092434" src="https://github.com/user-attachments/assets/c8eac4ab-f88c-4f9f-b4ce-431fee92c621" />
-
-  <img width="1633" height="626" alt="Screenshot 2026-04-16 092552" src="https://github.com/user-attachments/assets/d2f45bda-2504-4c65-a040-a7ce8cef0b85" />
+<img width="1819" height="907" alt="Screenshot 2026-04-20 210029" src="https://github.com/user-attachments/assets/4f29b4a6-30b8-41cb-8b66-5c682be97902" />
+<img width="1824" height="903" alt="Screenshot 2026-04-20 210112" src="https://github.com/user-attachments/assets/2bb68816-07b5-4b89-8498-ed44607b2ffa" />
 
 ### Repository Usage Table
 - Lists **all repository methods** with call-count badges (red = never called, amber = rarely called, green = frequently called)
@@ -84,7 +82,7 @@ Click the ▶ gutter icon next to any Spring Data repository method. Fill in the
 - **Current File filter** — open any repository file (e.g. `UserRepository.java`) and click **Current File** to scope the table to that repository's methods instantly; no manual search needed
 - **Export to CSV** with one click
 - Table auto-populates on panel open — no manual Refresh required on startup
-<img width="1645" height="667" alt="Screenshot 2026-04-16 092235" src="https://github.com/user-attachments/assets/34bb1f53-c629-4976-8f9b-03c8942e7ac4" />
+<img width="1837" height="866" alt="Screenshot 2026-04-20 205823" src="https://github.com/user-attachments/assets/3a40bef9-1f30-4ab5-b469-0608183b9440" />
 
 
 ### Zero Configuration
@@ -141,15 +139,15 @@ Run your Spring Boot app from IntelliJ as usual (▶ Run or Debug). The embedded
 
 ### 3. Click the Gutter Icon
 
-Any method in a Spring Data JPA repository interface gets a ▶ run marker in the gutter:
+Any method in a Spring Data JPA repository interface gets ⌕|✎ a  run marker in the gutter:
 
 ```java
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    // ▶ ← click this
+    // ⌕|✎ ← click this
     List<User> findByEmailAndStatus(String email, UserStatus status);
 
-    // ▶ ← or this
+    // ⌕|✎ ← or this
     Page<User> findAllByCreatedAtAfter(LocalDate date, Pageable pageable);
 }
 ```
@@ -226,7 +224,7 @@ IntelliJ Plugin                          Spring Boot App (your app)
 1. AgentRunConfigPatcher patches          repoBuddy-agent.jar is added as
    your Run Config on project open  ───▶  -javaagent at JVM startup
 
-2. User clicks ▶ gutter icon
+2. User clicks ⌕|✎ gutter icon
    → RepoRunnerPopup opens
 
 3. User fills parameters, clicks Run
@@ -277,7 +275,7 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 
 | Requirement | Version |
 |---|---|
-| IntelliJ IDEA (Community or Ultimate) | 2024.1+ |
+| IntelliJ IDEA (Community or Ultimate) | 2023.1+ |
 | Java / JDK | 17+ |
 | Spring Boot | 3.x |
 | Spring Data JPA | on classpath |
@@ -314,14 +312,8 @@ Please include:
 
 ---
 
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
 <div align="center">
 
-Built with care by [Sherif Elglaly](https://elglaly.github.io/Sherif-Elglaly/) · [Plugin Page](https://plugins.jetbrains.com) · [Report an Issue](https://github.com/elglaly/RepoBuddy/issues)
+Built with care by [Sherif Elglaly](https://elglaly.github.io/Sherif-Elglaly/) · [Plugin Page]([https://plugins.jetbrains.com](https://plugins.jetbrains.com/plugin/31285-repobuddy) · [Report an Issue](https://github.com/elglaly/RepoBuddy/issues)
 
 </div>
