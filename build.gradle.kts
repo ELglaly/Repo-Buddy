@@ -1,11 +1,11 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.9.25"
+    id("org.jetbrains.kotlin.jvm") version "2.1.20"
     id("org.jetbrains.intellij.platform") version "2.14.0"
 }
 
 group = "com.elglaly"
-version = "1.0.3"
+version = "1.0.4"
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -63,7 +63,17 @@ tasks {
         password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
     }
 
+    patchPluginXml {
+        pluginDescription = providers.fileContents(
+            layout.projectDirectory.file("src/main/resources/META-INF/description.html")
+        ).asText
+        changeNotes = providers.fileContents(
+            layout.projectDirectory.file("src/main/resources/META-INF/change-notes.html")
+        ).asText
+        sinceBuild = "232"
+    }
+
     publishPlugin {
-        token.set(System.getenv("PUBLISH_TOKEN"))
+        token.set(providers.gradleProperty("publishToken").orElse(System.getenv("PUBLISH_TOKEN") ?: ""))
     }
 }
