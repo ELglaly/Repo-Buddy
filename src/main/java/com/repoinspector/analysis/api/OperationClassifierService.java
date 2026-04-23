@@ -12,22 +12,9 @@ import com.repoinspector.model.OperationType;
  */
 public interface OperationClassifierService {
 
-    /**
-     * Classifies whether a repository method is a READ or WRITE operation.
-     * Must be called inside a read action.
-     */
     OperationType classify(PsiMethod method);
 
-    /**
-     * Extracts the entity type name from the repository's Spring Data generic supertype,
-     * e.g. {@code UserRepository extends JpaRepository<User, Long>} returns {@code "User"}.
-     * Must be called inside a read action.
-     */
     String extractEntityName(PsiClass repoClass);
 
-    /**
-     * Returns {@code true} if the method or its containing class is annotated with
-     * {@code @Transactional}. Must be called inside a read action.
-     */
     boolean isTransactional(PsiMethod method);
 }

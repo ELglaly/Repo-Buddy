@@ -35,7 +35,6 @@ public record CallChainNode(
                 operationType, entityName, isTransactional, isDynamic, qualifiedClassName, null);
     }
 
-    /** Convenience label used in the tree and the text export. */
     public String displayLabel() {
         if (isDynamic) {
             return "[DYNAMIC - cannot trace]  " + className + "." + methodSignature;

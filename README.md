@@ -249,6 +249,12 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 
 ## Changelog
 
+### 1.0.3
+- Refined the Repository Usage table with cleaner badges, softer typography, and a more polished visual layout
+- Redesigned the Call Chain Tracer tree for a more professional and readable presentation
+- Improved the repository runner popup UI with cleaner tabs, cards, and better visual hierarchy
+- Updated the Marketplace plugin description and presentation metadata
+
 ### 1.0.2
 - **Current File filter** in Repository Usage — scope the table to the repository file you have open with one click
 - **Endpoint search** in Call Chain Tracer — live filter by HTTP verb or path fragment; dropdown opens automatically as you type

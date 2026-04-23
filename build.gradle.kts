@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.elglaly"
-version = "1.0.2"
+version = "1.0.3"
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -55,11 +55,6 @@ tasks {
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-    }
-
-    patchPluginXml {
-        sinceBuild.set("241")
-        untilBuild.set("253.*")
     }
 
     signPlugin {

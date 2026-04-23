@@ -8,8 +8,6 @@ import java.util.List;
 
 /**
  * Discovers Spring repositories and analyses method call-site counts.
- *
- * <p>Retrieve via {@code project.getService(RepositoryAnalysisService.class)}.
  */
 public interface RepositoryAnalysisService {
 
@@ -33,14 +31,12 @@ public interface RepositoryAnalysisService {
     /**
      * Returns {@code true} if {@code psiClass} is a Spring repository
      * (annotation-based or Spring Data hierarchy-based).
-     * Must be called inside a read action.
      */
     boolean isRepository(PsiClass psiClass);
 
     /**
      * Returns only the methods declared directly on {@code repoClass},
      * excluding inherited methods from Spring Data base interfaces.
-     * Must be called inside a read action.
      */
     List<PsiMethod> getRepositoryMethods(PsiClass repoClass);
 }

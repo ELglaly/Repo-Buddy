@@ -16,6 +16,7 @@ import com.intellij.psi.search.searches.ClassInheritorsSearch;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.repoinspector.analysis.api.RepositoryAnalysisService;
 import com.repoinspector.constants.SpringAnnotations;
+import com.repoinspector.model.OperationType;
 import com.repoinspector.model.RepositoryMethodInfo;
 import com.repoinspector.runner.service.api.ParameterExtractionService;
 import org.jetbrains.annotations.NotNull;
@@ -56,9 +57,10 @@ public final class DefaultRepositoryAnalysisService implements RepositoryAnalysi
                     String repoName = repoClass.getName();
                     if (repoName == null) continue;
                     for (PsiMethod method : getRepositoryMethods(repoClass)) {
-                        String signature = paramService.buildSignature(method);
-                        int    count     = countCallSites(method);
-                        infos.add(new RepositoryMethodInfo(repoName, method.getName(), signature, count));
+                        String        signature = paramService.buildSignature(method);
+                        int           count     = countCallSites(method);
+                        OperationType op        = OperationType.fromMethodName(method.getName());
+                        infos.add(new RepositoryMethodInfo(repoName, method.getName(), signature, count, op));
                         methods.add(method);
                     }
                 }
