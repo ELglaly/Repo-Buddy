@@ -1,0 +1,54 @@
+<h3>1.0.4 - Marketplace Fix &amp; Compatibility Expansion</h3>
+<ul>
+  <li>Fixed plugin description not appearing on JetBrains Marketplace.</li>
+  <li>Expanded IDE compatibility range: supported from IntelliJ IDEA 2023.2 with no upper build limit.</li>
+</ul>
+
+<h3>1.0.3 - UI Polish and Marketplace Presentation</h3>
+<ul>
+  <li>Refined the Repository Usage table with cleaner badges, improved typography, and a more polished layout.</li>
+  <li>Redesigned the Call Chain Tracer tree and the repository runner popup for a more professional, readable presentation.</li>
+  <li>Updated the Marketplace plugin description and metadata wording for a clearer, stronger overview page.</li>
+</ul>
+
+<h3>1.0.2 - Repository Filtering &amp; Endpoint Search</h3>
+<ul>
+  <li>
+    <b>Current File filter</b> - new toggle in the Repository Usage tab. Open any repository
+    file (e.g. <code>UserRepository.java</code>) and click <i>Current File</i> to scope the
+    table to that repository's methods instantly.
+  </li>
+  <li>
+    <b>Endpoint search in Call Chain Tracer</b> - live filter field above the endpoint dropdown.
+    Type an HTTP verb (e.g. <code>POST</code>) or a path fragment (e.g. <code>/users</code>)
+    and the dropdown narrows in real time.
+  </li>
+  <li>
+    <b>Full API path display</b> - endpoint paths now include the controller-level
+    <code>@RequestMapping</code> prefix (e.g. <code>/api/v1/users/{id}</code>).
+  </li>
+  <li>
+    <b>Cleaner endpoint combo display</b> - shows only the HTTP verb and path
+    (<code>[GET] /api/users</code>) without the controller class name.
+  </li>
+</ul>
+
+<h3>1.0.1 - Stability &amp; Build Improvements</h3>
+<ul>
+  <li>Enhanced build configuration and random data generation strategies.</li>
+  <li>Updated settings and plugin files for improved documentation and versioning.</li>
+</ul>
+
+<h3>1.0.0 - Initial Release</h3>
+<ul>
+  <li>Run gutter actions on Spring Data repository methods.</li>
+  <li>Live execution via embedded Java agent.</li>
+  <li>SQL capture via Hibernate StatementInspector.</li>
+  <li>Smart parameter form with per-type widgets.</li>
+  <li>Random data generation with field-level and generate-all actions.</li>
+  <li>Pageable and enum-aware parameter handling.</li>
+  <li>Call Chain Tracer with summary insights and source navigation.</li>
+  <li>Repository Usage table with filtering and export support.</li>
+  <li>Automatic run-configuration patching on project open.</li>
+  <li>Theme-aware UI for light and dark IntelliJ themes.</li>
+</ul>
