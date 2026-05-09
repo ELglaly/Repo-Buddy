@@ -3,10 +3,10 @@
 <div align="center">
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=gradle)
-![Version](https://img.shields.io/badge/version-1.0.4-blue?style=for-the-badge)
-![IntelliJ](https://img.shields.io/badge/IntelliJ-2024.1%2B-orange?style=for-the-badge&logo=intellij-idea)
+![Version](https://img.shields.io/badge/version-1.0.5-blue?style=for-the-badge)
+![IntelliJ](https://img.shields.io/badge/IntelliJ-2023.2%2B-orange?style=for-the-badge&logo=intellij-idea)
 ![Java](https://img.shields.io/badge/Java-17%2B-red?style=for-the-badge&logo=openjdk)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-6DB33F?style=for-the-badge&logo=springboot)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.7%2B-6DB33F?style=for-the-badge&logo=springboot)
 
 **Run any Spring Data JPA repository method directly from the editor — no test, no REST client, no redeploy.**
 
@@ -86,7 +86,8 @@ Click the ⌕|✎ gutter icon next to any Spring Data repository method. Fill in
 
 
 ### Zero Configuration
-- **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2024.1+)
+- **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2023.2+)
+- **Clean uninstall** — all injected `-javaagent` flags are automatically removed from every run configuration when the plugin is uninstalled; no manual cleanup needed
 - No extra Maven / Gradle dependencies needed in your project
 - **Live agent status indicator** — the popup header shows `● Agent Ready` / `● Offline` so you know at a glance whether the agent is reachable before hitting Run
 
@@ -202,7 +203,7 @@ RepoBuddy/
 │       ├── runner/                 # Execution subsystem
 │       │   ├── model/              # Request/response DTOs
 │       │   ├── service/            # Parameter extraction, Spring URL resolution
-│       │   ├── startup/            # AgentRunConfigPatcher (ProjectActivity)
+│       │   ├── startup/            # AgentRunConfigPatcher (inject on open), AgentConfigCleaner (cleanup on uninstall)
 │       │   └── ui/                 # Execution popup panels
 │       └── ui/                     # Tool window panels (RepoInspector, CallChain)
 │
@@ -249,6 +250,14 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 
 ## Changelog
 
+### 1.0.5
+- **Spring Boot 2.7+ support** — agent now auto-configures on Spring Boot 2.7.x, 3.x, and future 4.x releases (adds `spring.factories` alongside the existing `.imports` file)
+- **Clean uninstall** — injected `-javaagent` flags are automatically stripped from all run configurations when the plugin is uninstalled
+
+### 1.0.4
+- Fixed plugin description not appearing on JetBrains Marketplace
+- Expanded IDE compatibility range: supported from IntelliJ IDEA 2023.2 with no upper build limit
+
 ### 1.0.3
 - Refined the Repository Usage table with cleaner badges, softer typography, and a more polished visual layout
 - Redesigned the Call Chain Tracer tree for a more professional and readable presentation
@@ -277,7 +286,7 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 |---|---|
 | IntelliJ IDEA (Community or Ultimate) | 2023.1+ |
 | Java / JDK | 17+ |
-| Spring Boot | 3.x |
+| Spring Boot | 2.7.x, 3.x, 4.x+ |
 | Spring Data JPA | on classpath |
 | App must be running locally | started from IntelliJ |
 

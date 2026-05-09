@@ -53,6 +53,11 @@
 
     </extensions>
 
+    <applicationListeners>
+        <listener class="com.repoinspector.runner.startup.AgentConfigCleaner"
+                  topic="com.intellij.ide.plugins.DynamicPluginListener"/>
+    </applicationListeners>
+
     <actions>
         <action id="RepoBuddy.TraceRepositoryCalls"
                 class="com.repoinspector.actions.TraceRepositoryCallsAction"
