@@ -58,6 +58,15 @@
                 level="WARNING"
                 implementationClass="com.repoinspector.inspections.MissingPaginationInspection"/>
 
+        <localInspection
+                language="JAVA"
+                shortName="RepoBuddyMissingTransactional"
+                displayName="Database write without @Transactional"
+                groupName="RepoBuddy"
+                enabledByDefault="true"
+                level="WARNING"
+                implementationClass="com.repoinspector.inspections.MissingTransactionalInspection"/>
+
         <toolWindow id="RepoBuddy"
                     anchor="bottom"
                     factoryClass="com.repoinspector.ui.RepoInspectorToolWindowFactory"/>

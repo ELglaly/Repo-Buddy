@@ -108,7 +108,15 @@ under **Settings → Editor → Inspections → RepoBuddy**.
   returns `Page`/`Slice`, is name-limited (`findFirstBy…`/`findTop10By…`), or its `@Query`
   contains a `LIMIT`. By default only "find all"-style methods are reported.
 
-  > _More inspections (N+1 query detection, missing `@Transactional`) are on the roadmap._
+- **Missing `@Transactional`** — flags methods that write to the database without
+  transactional context: a Spring Data `@Modifying` query method that isn't
+  `@Transactional`, a method body that calls `persist`/`merge`/`remove`/`flush` or
+  `Query.executeUpdate()` outside a transaction, and (opt-in) methods that call repository
+  `save`/`delete`/`update`. A quick-fix annotates the method with `@Transactional`. Both
+  Spring and Jakarta/`javax` `@Transactional` are recognised; private methods are ignored
+  by default.
+
+  > _N+1 query detection is on the roadmap._
 
 ### Zero Configuration
 - **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2023.2+)

@@ -1,0 +1,23 @@
+<html>
+<body>
+Reports methods that write to the database without transactional context.
+<ul>
+    <li><b>@Modifying without @Transactional</b> &ndash; a Spring Data
+        <code>@Modifying</code> query method that is neither annotated
+        <code>@Transactional</code> nor declared in a <code>@Transactional</code> class
+        throws at runtime unless every caller already runs inside a transaction.</li>
+    <li><b>EntityManager writes</b> &ndash; a method body that calls
+        <code>persist</code>, <code>merge</code>, <code>remove</code>, <code>flush</code>,
+        or <code>Query.executeUpdate()</code> outside a transaction throws
+        <code>TransactionRequiredException</code>.</li>
+    <li><b>Repository write calls</b> (opt-in) &ndash; a method that calls repository
+        <code>save</code>/<code>delete</code>/<code>update</code> operations without
+        <code>@Transactional</code>; helpful when several writes must commit atomically.</li>
+</ul>
+<p>A quick-fix annotates the method with <code>@Transactional</code>. Both Spring and
+Jakarta/<code>javax</code> <code>@Transactional</code> annotations are recognised as
+satisfying the requirement.</p>
+<p>Private methods are ignored by default because Spring's proxy cannot apply
+<code>@Transactional</code> to them; static methods are always skipped.</p>
+</body>
+</html>
