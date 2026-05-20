@@ -120,7 +120,16 @@ public class MissingTransactionalInspectionTest extends LightJavaCodeInsightFixt
 
     // ── Check C: repository write calls (opt-in) ──────────────────────────────
 
-    public void testRepositorySave_notFlaggedByDefault() {
+    public void testRepositorySave_flaggedByDefault() {
+        assertEquals(1, warnings(
+                highlight("interface UserRepository extends JpaRepository<User, Long> {}\n"
+                        + "class UserService { private UserRepository repo;"
+                        + " void create(User u) { repo.save(u); } }"),
+                "repository write operations"));
+    }
+
+    public void testRepositorySave_notFlaggedWhenDisabled() {
+        inspection.includeRepositoryWriteCalls = false;
         assertEquals(0, warnings(
                 highlight("interface UserRepository extends JpaRepository<User, Long> {}\n"
                         + "class UserService { private UserRepository repo;"
@@ -128,12 +137,12 @@ public class MissingTransactionalInspectionTest extends LightJavaCodeInsightFixt
                 "repository write operations"));
     }
 
-    public void testRepositorySave_flaggedWhenEnabled() {
-        inspection.includeRepositoryWriteCalls = true;
-        assertEquals(1, warnings(
-                highlight("interface UserRepository extends JpaRepository<User, Long> {}\n"
-                        + "class UserService { private UserRepository repo;"
-                        + " void create(User u) { repo.save(u); } }"),
+    public void testEntitySetterAndCollectionAdd_notCountedAsRepositoryWrite() {
+        // setQuantity()/items.add() are write-prefixed names but their owners are not
+        // repositories, so they must not trigger the repository-write check.
+        assertEquals(0, warnings(
+                highlight("class CartItem { private int q; public void setQuantity(int q){this.q=q;} }\n"
+                        + "class CartService { void touch(CartItem item) { item.setQuantity(5); } }"),
                 "repository write operations"));
     }
 

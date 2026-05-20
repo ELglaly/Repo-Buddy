@@ -82,6 +82,18 @@ public class NPlusOneQueryInspectionTest extends LightJavaCodeInsightFixtureTest
         return myFixture.doHighlighting();
     }
 
+    private List<HighlightInfo> inMethod(String body) {
+        myFixture.configureByText("Service.java",
+                "import java.util.List;\n"
+                        + "import com.example.User;\n"
+                        + "class Service {\n"
+                        + "  void process(List<User> users) {\n"
+                        + "    " + body + "\n"
+                        + "  }\n"
+                        + "}\n");
+        return myFixture.doHighlighting();
+    }
+
     private long warnings(List<HighlightInfo> infos) {
         return infos.stream()
                 .filter(i -> i.getSeverity() == HighlightSeverity.WARNING)
@@ -139,6 +151,47 @@ public class NPlusOneQueryInspectionTest extends LightJavaCodeInsightFixtureTest
                         + "    for (PlainUser user : users) {\n"
                         + "      user.getAddresses();\n"
                         + "    }\n"
+                        + "  }\n"
+                        + "}\n");
+        assertEquals(0, warnings(myFixture.doHighlighting()));
+    }
+
+    // ── stream / lambda iteration ─────────────────────────────────────────────
+
+    public void testForEachLambdaLazy_flagged() {
+        assertEquals(1, warnings(
+                inMethod("users.forEach((User user) -> user.getAddresses());")));
+    }
+
+    public void testStreamMapLazy_flagged() {
+        assertEquals(1, warnings(
+                inMethod("users.stream().map((User user) -> user.getRoles());")));
+    }
+
+    public void testStreamLazyManyToOne_flagged() {
+        assertEquals(1, warnings(
+                inMethod("users.stream().filter((User user) -> user.getManager() != null);")));
+    }
+
+    public void testForEachLambdaEager_notFlagged() {
+        assertEquals(0, warnings(
+                inMethod("users.forEach((User user) -> user.getCompany());")));
+    }
+
+    public void testForEachLambdaIdGetter_notFlagged() {
+        assertEquals(0, warnings(
+                inMethod("users.forEach((User user) -> user.getId());")));
+    }
+
+    public void testNonIterationMethodLambda_notFlagged() {
+        myFixture.configureByText("Service.java",
+                "import java.util.List;\n"
+                        + "import com.example.User;\n"
+                        + "class Service {\n"
+                        + "  interface Fn { Object apply(User u); }\n"
+                        + "  Object apply(Fn fn) { return null; }\n"
+                        + "  void process(List<User> users) {\n"
+                        + "    apply((User user) -> user.getAddresses());\n"
                         + "  }\n"
                         + "}\n");
         assertEquals(0, warnings(myFixture.doHighlighting()));

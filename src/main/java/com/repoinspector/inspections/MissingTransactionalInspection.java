@@ -44,7 +44,7 @@ import static com.intellij.codeInspection.options.OptPane.pane;
 public class MissingTransactionalInspection extends AbstractBaseJavaLocalInspectionTool {
 
     @SuppressWarnings("WeakerAccess") public boolean ignorePrivateMethods = true;
-    @SuppressWarnings("WeakerAccess") public boolean includeRepositoryWriteCalls = false;
+    @SuppressWarnings("WeakerAccess") public boolean includeRepositoryWriteCalls = true;
 
     @Override
     public @NotNull OptPane getOptionsPane() {

@@ -11,10 +11,13 @@ import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiAnnotationMemberValue;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiClassType;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementVisitor;
 import com.intellij.psi.PsiExpression;
+import com.intellij.psi.PsiExpressionList;
 import com.intellij.psi.PsiField;
 import com.intellij.psi.PsiForeachStatement;
+import com.intellij.psi.PsiLambdaExpression;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiModifierListOwner;
@@ -26,6 +29,8 @@ import com.repoinspector.constants.JpaAnnotations;
 import com.repoinspector.inspections.detector.LazyAssociationRules;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Set;
 
 import static com.intellij.codeInspection.options.OptPane.number;
 import static com.intellij.codeInspection.options.OptPane.pane;
@@ -47,6 +52,13 @@ public class NPlusOneQueryInspection extends AbstractBaseJavaLocalInspectionTool
 
     @SuppressWarnings("WeakerAccess") public int batchSizeThreshold = 1;
 
+    /** Stream / collection methods whose lambda iterates per element. */
+    private static final Set<String> ITERATION_METHODS = Set.of(
+            "forEach", "map", "filter", "flatMap", "peek",
+            "anyMatch", "allMatch", "noneMatch", "removeIf",
+            "mapToInt", "mapToLong", "mapToDouble", "mapToObj"
+    );
+
     private record Association(String simpleName, String fetch) {}
 
     @Override
@@ -65,33 +77,51 @@ public class NPlusOneQueryInspection extends AbstractBaseJavaLocalInspectionTool
                 PsiParameter loopVar = statement.getIterationParameter();
                 PsiClass entityClass = resolveClass(loopVar.getType());
                 if (entityClass == null || !isEntity(entityClass)) return;
-
                 PsiStatement body = statement.getBody();
-                if (body == null) return;
+                if (body != null) scanForLazyAccess(body, loopVar, entityClass, holder);
+            }
 
-                body.accept(new JavaRecursiveElementVisitor() {
-                    @Override
-                    public void visitMethodCallExpression(@NotNull PsiMethodCallExpression call) {
-                        super.visitMethodCallExpression(call);
-
-                        PsiReferenceExpression methodExpr = call.getMethodExpression();
-                        if (!(methodExpr.getQualifierExpression() instanceof PsiReferenceExpression qualifier)) {
-                            return;
-                        }
-                        if (!qualifier.isReferenceTo(loopVar)) return;
-
-                        String property = lazyAssociationProperty(call, methodExpr.getReferenceName(), entityClass);
-                        if (property == null) return;
-
-                        holder.registerProblem(call,
-                                "Potential N+1 query: accessing lazy association '" + property
-                                        + "' inside a loop issues a separate SELECT per iteration. Use JOIN FETCH "
-                                        + "or @EntityGraph when loading " + entityClass.getName() + ".",
-                                ProblemHighlightType.GENERIC_ERROR_OR_WARNING);
-                    }
-                });
+            @Override
+            public void visitLambdaExpression(@NotNull PsiLambdaExpression lambda) {
+                PsiParameter[] params = lambda.getParameterList().getParameters();
+                if (params.length != 1 || !isIterationLambda(lambda)) return;
+                PsiParameter loopVar = params[0];
+                PsiClass entityClass = resolveClass(loopVar.getType());
+                if (entityClass == null || !isEntity(entityClass)) return;
+                PsiElement body = lambda.getBody();
+                if (body != null) scanForLazyAccess(body, loopVar, entityClass, holder);
             }
         };
+    }
+
+    private void scanForLazyAccess(@NotNull PsiElement body, @NotNull PsiParameter loopVar,
+                                   @NotNull PsiClass entityClass, @NotNull ProblemsHolder holder) {
+        body.accept(new JavaRecursiveElementVisitor() {
+            @Override
+            public void visitMethodCallExpression(@NotNull PsiMethodCallExpression call) {
+                super.visitMethodCallExpression(call);
+
+                PsiReferenceExpression methodExpr = call.getMethodExpression();
+                if (!(methodExpr.getQualifierExpression() instanceof PsiReferenceExpression qualifier)) return;
+                if (!qualifier.isReferenceTo(loopVar)) return;
+
+                String property = lazyAssociationProperty(call, methodExpr.getReferenceName(), entityClass);
+                if (property == null) return;
+
+                holder.registerProblem(call,
+                        "Potential N+1 query: accessing lazy association '" + property
+                                + "' inside a loop issues a separate SELECT per iteration. Use JOIN FETCH "
+                                + "or @EntityGraph when loading " + entityClass.getName() + ".",
+                        ProblemHighlightType.GENERIC_ERROR_OR_WARNING);
+            }
+        });
+    }
+
+    /** True if the lambda is the argument of a stream/collection iteration call. */
+    private static boolean isIterationLambda(@NotNull PsiLambdaExpression lambda) {
+        if (!(lambda.getParent() instanceof PsiExpressionList args)) return false;
+        if (!(args.getParent() instanceof PsiMethodCallExpression call)) return false;
+        return ITERATION_METHODS.contains(call.getMethodExpression().getReferenceName());
     }
 
     private @Nullable String lazyAssociationProperty(@NotNull PsiMethodCallExpression call,

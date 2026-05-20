@@ -10,9 +10,10 @@ Reports methods that write to the database without transactional context.
         <code>persist</code>, <code>merge</code>, <code>remove</code>, <code>flush</code>,
         or <code>Query.executeUpdate()</code> outside a transaction throws
         <code>TransactionRequiredException</code>.</li>
-    <li><b>Repository write calls</b> (opt-in) &ndash; a method that calls repository
+    <li><b>Repository write calls</b> &ndash; a method that calls repository
         <code>save</code>/<code>delete</code>/<code>update</code> operations without
-        <code>@Transactional</code>; helpful when several writes must commit atomically.</li>
+        <code>@Transactional</code>; important when several writes must commit atomically.
+        Enabled by default; disable it via the inspection options if it is too noisy.</li>
 </ul>
 <p>A quick-fix annotates the method with <code>@Transactional</code>. Both Spring and
 Jakarta/<code>javax</code> <code>@Transactional</code> annotations are recognised as

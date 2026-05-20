@@ -111,7 +111,7 @@ under **Settings → Editor → Inspections → RepoBuddy**.
 - **Missing `@Transactional`** — flags methods that write to the database without
   transactional context: a Spring Data `@Modifying` query method that isn't
   `@Transactional`, a method body that calls `persist`/`merge`/`remove`/`flush` or
-  `Query.executeUpdate()` outside a transaction, and (opt-in) methods that call repository
+  `Query.executeUpdate()` outside a transaction, and methods that call repository
   `save`/`delete`/`update`. A quick-fix annotates the method with `@Transactional`. Both
   Spring and Jakarta/`javax` `@Transactional` are recognised; private methods are ignored
   by default.
