@@ -16,14 +16,18 @@ repositories {
 }
 
 dependencies {
-    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:3.2.0"))
+    // Pin to the last Spring Boot 2.x release so the agent's bytecode is binary-compatible
+    // with Spring Boot 2.7+, 3.x, and (expected) 4.x.  All APIs used here
+    // (@ConditionalOnWebApplication, @ConditionalOnClass, HibernatePropertiesCustomizer,
+    // ApplicationContext) are stable across these versions.
+    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:2.7.18"))
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
     compileOnly("org.springframework:spring-core")
     compileOnly("org.springframework.data:spring-data-jpa")
-    compileOnly("org.hibernate.orm:hibernate-core:6.4.0.Final")
+    compileOnly("org.hibernate:hibernate-core")
     compileOnly("com.fasterxml.jackson.core:jackson-databind")
 
-    annotationProcessor(platform("org.springframework.boot:spring-boot-dependencies:3.2.0"))
+    annotationProcessor(platform("org.springframework.boot:spring-boot-dependencies:2.7.18"))
     annotationProcessor("org.springframework.boot:spring-boot-autoconfigure-processor")
 }
 

@@ -2,7 +2,6 @@ package com.repoinspector.agent.config;
 
 import com.repoinspector.agent.server.RepoBuddyAgentServer;
 import com.repoinspector.agent.service.RepoExecutionService;
-import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer;
@@ -20,8 +19,12 @@ import org.springframework.context.annotation.Configuration;
  * <p>This server runs completely outside Tomcat and Spring Security — no
  * authentication filter, JWT validator, or OAuth2 resource-server can
  * interfere with it.
+ *
+ * <p>Discovery: Spring Boot 2.x picks this class up via {@code META-INF/spring.factories};
+ * Spring Boot 3.x+ uses {@code META-INF/spring/org.springframework.boot.autoconfigure
+ * .AutoConfiguration.imports}. Both files are present so all versions are supported.
  */
-@AutoConfiguration
+@Configuration
 @ConditionalOnWebApplication
 public class RepoExecutionAutoConfiguration {
 
