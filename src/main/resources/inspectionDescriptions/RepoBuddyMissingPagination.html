@@ -1,0 +1,19 @@
+<html>
+<body>
+Reports Spring Data repository methods that return an unbounded collection
+(<code>List</code>, <code>Set</code>, <code>Collection</code>, <code>Iterable</code> or
+<code>Stream</code>) with no pagination. Such methods can load an entire table into
+memory and degrade performance as data grows.
+<p>A quick-fix changes the return type to <code>Page&lt;T&gt;</code> and appends a
+<code>Pageable</code> parameter.</p>
+<p>The warning is suppressed when the method:</p>
+<ul>
+    <li>already takes a <code>Pageable</code> or <code>Sort</code> argument;</li>
+    <li>returns <code>Page</code> or <code>Slice</code>;</li>
+    <li>is name-limited, e.g. <code>findFirstBy…</code> / <code>findTop10By…</code>;</li>
+    <li>declares a <code>@Query</code> that already contains a <code>LIMIT</code> clause.</li>
+</ul>
+<p>By default only "find all"-style methods (whose name contains an <code>All</code>
+segment) are reported; disable that option to flag every unbounded query.</p>
+</body>
+</html>

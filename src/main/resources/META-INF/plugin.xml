@@ -49,6 +49,15 @@
                 level="WARNING"
                 implementationClass="com.repoinspector.inspections.UnsafeQueryInspection"/>
 
+        <localInspection
+                language="JAVA"
+                shortName="RepoBuddyMissingPagination"
+                displayName="Repository method missing pagination"
+                groupName="RepoBuddy"
+                enabledByDefault="true"
+                level="WARNING"
+                implementationClass="com.repoinspector.inspections.MissingPaginationInspection"/>
+
         <toolWindow id="RepoBuddy"
                     anchor="bottom"
                     factoryClass="com.repoinspector.ui.RepoInspectorToolWindowFactory"/>

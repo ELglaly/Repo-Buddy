@@ -62,6 +62,8 @@ public final class SpringAnnotations {
 
     public static final String PAGEABLE = "org.springframework.data.domain.Pageable";
     public static final String SORT     = "org.springframework.data.domain.Sort";
+    public static final String PAGE     = "org.springframework.data.domain.Page";
+    public static final String SLICE    = "org.springframework.data.domain.Slice";
 
     /** Spring + Jakarta + legacy javax transaction annotation FQNs. */
     public static final String JAKARTA_TRANSACTIONAL = "jakarta.transaction.Transactional";

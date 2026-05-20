@@ -101,8 +101,14 @@ under **Settings → Editor → Inspections → RepoBuddy**.
   - **String concatenation** — the `@Query` value is built with `+` instead of a single
     literal (flagged by default; disable via the inspection options).
 
-  > _More inspections (N+1 query detection, missing `@Transactional`, missing pagination)
-  > are on the roadmap._
+- **Missing pagination** — flags repository methods that return an unbounded collection
+  (`List`, `Set`, `Collection`, `Iterable`, `Stream`) with no pagination, which can load
+  an entire table into memory. A quick-fix changes the return type to `Page<T>` and adds a
+  `Pageable` parameter. Suppressed when the method already takes a `Pageable`/`Sort`,
+  returns `Page`/`Slice`, is name-limited (`findFirstBy…`/`findTop10By…`), or its `@Query`
+  contains a `LIMIT`. By default only "find all"-style methods are reported.
+
+  > _More inspections (N+1 query detection, missing `@Transactional`) are on the roadmap._
 
 ### Zero Configuration
 - **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2023.2+)
