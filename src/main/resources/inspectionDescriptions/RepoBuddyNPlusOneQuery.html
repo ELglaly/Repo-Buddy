@@ -1,0 +1,27 @@
+<html>
+<body>
+Detects the classic <b>N+1 query</b> pattern: accessing a lazily-loaded JPA association
+on a loop variable inside a <code>for-each</code> loop. Each iteration triggers a separate
+<code>SELECT</code>, so a list of <i>N</i> entities causes <i>N + 1</i> queries.
+<pre>
+for (User user : users) {
+    user.getAddresses().size();   // lazy @OneToMany loaded once per user
+}
+</pre>
+<p>The inspection is intentionally conservative to avoid false positives. It fires only
+when:</p>
+<ul>
+    <li>the loop variable's type is an <code>@Entity</code>, and</li>
+    <li>the accessed property is a clearly lazy association &mdash;
+        <code>@OneToMany</code>/<code>@ManyToMany</code> (lazy by default), or
+        <code>@ManyToOne</code>/<code>@OneToOne</code> declared with
+        <code>fetch = FetchType.LAZY</code>.</li>
+</ul>
+<p>Associations annotated with a sufficiently large Hibernate <code>@BatchSize</code> are
+ignored (configurable threshold). Safe accesses such as <code>getId()</code> are never
+reported.</p>
+<p>No automated fix is offered because the correct remedy lives in the query that loads the
+collection &mdash; add a <code>JOIN FETCH</code> or an <code>@EntityGraph</code>. Indexed
+<code>for</code>/<code>while</code> loops and stream pipelines are not yet analysed.</p>
+</body>
+</html>

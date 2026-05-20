@@ -67,6 +67,16 @@
                 level="WARNING"
                 implementationClass="com.repoinspector.inspections.MissingTransactionalInspection"/>
 
+
+        <localInspection
+                language="JAVA"
+                shortName="RepoBuddyNPlusOneQuery"
+                displayName="Potential N+1 query (lazy association in loop)"
+                groupName="RepoBuddy"
+                enabledByDefault="true"
+                level="WARNING"
+                implementationClass="com.repoinspector.inspections.NPlusOneQueryInspection"/>
+
         <toolWindow id="RepoBuddy"
                     anchor="bottom"
                     factoryClass="com.repoinspector.ui.RepoInspectorToolWindowFactory"/>

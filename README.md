@@ -116,7 +116,12 @@ under **Settings → Editor → Inspections → RepoBuddy**.
   Spring and Jakarta/`javax` `@Transactional` are recognised; private methods are ignored
   by default.
 
-  > _N+1 query detection is on the roadmap._
+- **Potential N+1 query** — flags access to a lazy JPA association on a loop variable inside
+  a `for-each` loop, which issues a separate `SELECT` per iteration. Fires only when the loop
+  variable is an `@Entity` and the property is a clearly lazy association
+  (`@OneToMany`/`@ManyToMany`, or `@ManyToOne`/`@OneToOne` with `fetch = LAZY`). Associations
+  with a large enough Hibernate `@BatchSize` are ignored (configurable). Report-only — the fix
+  (`JOIN FETCH` or `@EntityGraph`) belongs in the loading query.
 
 ### Zero Configuration
 - **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2023.2+)
