@@ -40,6 +40,15 @@
                 language="JAVA"
                 implementationClass="com.repoinspector.gutter.RepoMethodGutterProvider"/>
 
+        <localInspection
+                language="JAVA"
+                shortName="RepoBuddyUnsafeQuery"
+                displayName="Unsafe @Query (injection surface / missing @Param)"
+                groupName="RepoBuddy"
+                enabledByDefault="true"
+                level="WARNING"
+                implementationClass="com.repoinspector.inspections.UnsafeQueryInspection"/>
+
         <toolWindow id="RepoBuddy"
                     anchor="bottom"
                     factoryClass="com.repoinspector.ui.RepoInspectorToolWindowFactory"/>

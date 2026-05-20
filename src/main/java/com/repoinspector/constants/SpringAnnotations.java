@@ -56,4 +56,18 @@ public final class SpringAnnotations {
     public static final String MODIFYING     = "org.springframework.data.jpa.repository.Modifying";
 
     public static final String APPLICATION_CONTEXT = "org.springframework.context.ApplicationContext";
+
+    public static final String QUERY = "org.springframework.data.jpa.repository.Query";
+    public static final String PARAM = "org.springframework.data.repository.query.Param";
+
+    public static final String PAGEABLE = "org.springframework.data.domain.Pageable";
+    public static final String SORT     = "org.springframework.data.domain.Sort";
+
+    /** Spring + Jakarta + legacy javax transaction annotation FQNs. */
+    public static final String JAKARTA_TRANSACTIONAL = "jakarta.transaction.Transactional";
+    public static final String JAVAX_TRANSACTIONAL   = "javax.transaction.Transactional";
+
+    public static final String[] TRANSACTIONAL_FQNS = {
+            TRANSACTIONAL, JAKARTA_TRANSACTIONAL, JAVAX_TRANSACTIONAL
+    };
 }

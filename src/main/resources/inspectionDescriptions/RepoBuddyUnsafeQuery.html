@@ -1,0 +1,22 @@
+<html>
+<body>
+Reports risky or incorrect Spring Data <code>@Query</code> declarations.
+<ul>
+    <li><b>Missing <code>@Param</code></b> &ndash; a named bind parameter such as
+        <code>:name</code> has neither a matching <code>@Param("name")</code> nor a
+        method parameter literally named <code>name</code>. Binding fails at runtime
+        unless the project is compiled with <code>-parameters</code>. A quick-fix adds
+        the annotation when the target parameter is unambiguous.</li>
+    <li><b>SpEL injection surface</b> &ndash; the query embeds a SpEL expression
+        (<code>#{...}</code>). These can interpolate untrusted input &mdash; for
+        example a dynamic <code>ORDER BY</code> in a native query &mdash; and should be
+        reviewed.</li>
+    <li><b>String concatenation</b> &ndash; the <code>@Query</code> value is assembled
+        with <code>+</code> instead of a single string literal. Flagged by default;
+        disable via the <i>Allow building the @Query value with string concatenation</i>
+        option. Java requires the operands to be compile-time constants, so this is a
+        style check rather than a security one.</li>
+</ul>
+<p>Each check can be toggled in the inspection options.</p>
+</body>
+</html>

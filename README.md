@@ -85,6 +85,25 @@ Click the ⌕|✎ gutter icon next to any Spring Data repository method. Fill in
 <img width="1837" height="866" alt="Screenshot 2026-04-20 205823" src="https://github.com/user-attachments/assets/3a40bef9-1f30-4ab5-b469-0608183b9440" />
 
 
+### Code Inspections
+
+RepoBuddy ships live IntelliJ inspections for common Spring Data JPA pitfalls. Each one
+highlights in the editor, appears in the **Problems** tool window, and is configurable
+under **Settings → Editor → Inspections → RepoBuddy**.
+
+- **Unsafe `@Query`** — flags `@Query` declarations that are likely to misbehave:
+  - **Missing `@Param`** — a named bind parameter (e.g. `:name`) with no matching
+    `@Param("name")` and no parameter literally named `name`; binding fails at runtime
+    unless the project is compiled with `-parameters`. A quick-fix adds the annotation
+    when the target parameter is unambiguous.
+  - **SpEL injection surface** — the query embeds a SpEL expression (`#{...}`), which can
+    interpolate untrusted input (e.g. a dynamic `ORDER BY` in a native query).
+  - **String concatenation** — the `@Query` value is built with `+` instead of a single
+    literal (flagged by default; disable via the inspection options).
+
+  > _More inspections (N+1 query detection, missing `@Transactional`, missing pagination)
+  > are on the roadmap._
+
 ### Zero Configuration
 - **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2023.2+)
 - **Clean uninstall** — all injected `-javaagent` flags are automatically removed from every run configuration when the plugin is uninstalled; no manual cleanup needed
