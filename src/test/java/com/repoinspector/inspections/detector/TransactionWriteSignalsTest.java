@@ -50,4 +50,54 @@ class TransactionWriteSignalsTest {
     void isJpaPersistenceType_nullSafe() {
         assertFalse(TransactionWriteSignals.isJpaPersistenceType(null));
     }
+
+    // ── Hibernate-native writes ───────────────────────────────────────────────
+
+    @Test
+    void isHibernateWriteMethod_trueForMutators() {
+        assertTrue(TransactionWriteSignals.isHibernateWriteMethod("save"));
+        assertTrue(TransactionWriteSignals.isHibernateWriteMethod("saveOrUpdate"));
+        assertTrue(TransactionWriteSignals.isHibernateWriteMethod("update"));
+        assertTrue(TransactionWriteSignals.isHibernateWriteMethod("delete"));
+    }
+
+    @Test
+    void isHibernateWriteMethod_falseAndNullSafe() {
+        assertFalse(TransactionWriteSignals.isHibernateWriteMethod("get"));
+        assertFalse(TransactionWriteSignals.isHibernateWriteMethod("load"));
+        assertFalse(TransactionWriteSignals.isHibernateWriteMethod(null));
+    }
+
+    @Test
+    void isHibernateSessionType_matchesSessionTypes() {
+        assertTrue(TransactionWriteSignals.isHibernateSessionType("org.hibernate.Session"));
+        assertTrue(TransactionWriteSignals.isHibernateSessionType("org.hibernate.StatelessSession"));
+        assertFalse(TransactionWriteSignals.isHibernateSessionType("jakarta.persistence.EntityManager"));
+        assertFalse(TransactionWriteSignals.isHibernateSessionType(null));
+    }
+
+    // ── JDBC writes ───────────────────────────────────────────────────────────
+
+    @Test
+    void isJdbcWriteMethod_trueForMutators() {
+        assertTrue(TransactionWriteSignals.isJdbcWriteMethod("update"));
+        assertTrue(TransactionWriteSignals.isJdbcWriteMethod("batchUpdate"));
+        assertTrue(TransactionWriteSignals.isJdbcWriteMethod("execute"));
+    }
+
+    @Test
+    void isJdbcWriteMethod_falseAndNullSafe() {
+        assertFalse(TransactionWriteSignals.isJdbcWriteMethod("query"));
+        assertFalse(TransactionWriteSignals.isJdbcWriteMethod("queryForObject"));
+        assertFalse(TransactionWriteSignals.isJdbcWriteMethod(null));
+    }
+
+    @Test
+    void isJdbcTemplateType_matchesTemplateTypes() {
+        assertTrue(TransactionWriteSignals.isJdbcTemplateType("org.springframework.jdbc.core.JdbcTemplate"));
+        assertTrue(TransactionWriteSignals.isJdbcTemplateType(
+                "org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate"));
+        assertFalse(TransactionWriteSignals.isJdbcTemplateType("java.util.List"));
+        assertFalse(TransactionWriteSignals.isJdbcTemplateType(null));
+    }
 }

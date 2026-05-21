@@ -13,7 +13,8 @@ import java.util.List;
  */
 public class MissingPaginationInspectionTest extends LightJavaCodeInsightFixtureTestCase {
 
-    private final MissingPaginationInspection inspection = new MissingPaginationInspection();
+    // alwaysAnalyze = true bypasses panel-only gating so these tests exercise the analysis logic.
+    private final MissingPaginationInspection inspection = new MissingPaginationInspection(true);
 
     @Override
     protected void setUp() throws Exception {

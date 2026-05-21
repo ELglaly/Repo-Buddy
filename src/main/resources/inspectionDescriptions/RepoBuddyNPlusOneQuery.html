@@ -1,17 +1,29 @@
 <html>
 <body>
-Detects the classic <b>N+1 query</b> pattern: accessing a lazily-loaded JPA association
-on a loop variable inside a <code>for-each</code> loop. Each iteration triggers a separate
-<code>SELECT</code>, so a list of <i>N</i> entities causes <i>N + 1</i> queries.
+Detects the classic <b>N+1 query</b> pattern, where a list of <i>N</i> entities causes
+<i>N + 1</i> queries. Two shapes are reported:
 <pre>
 for (User user : users) {
-    user.getAddresses().size();   // lazy @OneToMany loaded once per user
+    user.getAddresses().size();        // (1) lazy @OneToMany loaded once per user
+    authorRepository.findById(user.getAuthorId());  // (2) one query per iteration
 }
 </pre>
+<ol>
+    <li><b>Lazy association in a loop</b> &ndash; accessing a lazily-loaded JPA association on
+        a <code>for-each</code> (or stream-iteration) loop variable, or on a per-iteration
+        element access in an indexed loop (<code>list.get(i)</code>, <code>iterator.next()</code>,
+        <code>array[i]</code>).</li>
+    <li><b>Query call in a loop</b> &ndash; calling a Spring Data repository method, a JPA
+        <code>EntityManager</code>/<code>Query</code> read, a Hibernate <code>Session</code>
+        read, or a <code>JdbcTemplate</code> query inside any loop
+        (<code>for</code>/<code>for-each</code>/<code>while</code>/<code>do-while</code>) or a
+        stream-iteration lambda / method reference. The query that drives the loop itself
+        (e.g. <code>for (X x : repo.findAll())</code>) is not flagged.</li>
+</ol>
 <p>The inspection is intentionally conservative to avoid false positives. It fires only
 when:</p>
 <ul>
-    <li>the loop variable's type is an <code>@Entity</code>, and</li>
+    <li>the receiver's type is an <code>@Entity</code>, and</li>
     <li>the accessed property is a clearly lazy association &mdash;
         <code>@OneToMany</code>/<code>@ManyToMany</code> (lazy by default), or
         <code>@ManyToOne</code>/<code>@OneToOne</code> declared with
@@ -21,7 +33,11 @@ when:</p>
 ignored (configurable threshold). Safe accesses such as <code>getId()</code> are never
 reported.</p>
 <p>No automated fix is offered because the correct remedy lives in the query that loads the
-collection &mdash; add a <code>JOIN FETCH</code> or an <code>@EntityGraph</code>. Indexed
-<code>for</code>/<code>while</code> loops and stream pipelines are not yet analysed.</p>
+data &mdash; add a <code>JOIN FETCH</code> or an <code>@EntityGraph</code>, or batch the
+per-iteration lookups into a single <code>findAllById(ids)</code> call before the loop.
+Query-in-loop detection can be turned off in the inspection options.</p>
+<p><i>By default RepoBuddy runs in panel-only mode: these findings appear in the RepoBuddy
+<b>Issues</b> tab, the editor banner, and the status-bar counter rather than inline. Disable
+panel-only mode under <b>Settings | Tools | RepoBuddy</b> to see them as ordinary editor warnings.</i></p>
 </body>
 </html>

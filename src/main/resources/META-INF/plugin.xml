@@ -71,11 +71,20 @@
         <localInspection
                 language="JAVA"
                 shortName="RepoBuddyNPlusOneQuery"
-                displayName="Potential N+1 query (lazy association in loop)"
+                displayName="Potential N+1 query (lazy association or query call in loop)"
                 groupName="RepoBuddy"
                 enabledByDefault="true"
                 level="WARNING"
                 implementationClass="com.repoinspector.inspections.NPlusOneQueryInspection"/>
+
+        <localInspection
+                language="JAVA"
+                shortName="RepoBuddySelfInvocation"
+                displayName="@Transactional self-invocation bypasses the proxy"
+                groupName="RepoBuddy"
+                enabledByDefault="true"
+                level="WARNING"
+                implementationClass="com.repoinspector.inspections.SelfInvocationInspection"/>
 
         <toolWindow id="RepoBuddy"
                     anchor="bottom"
@@ -88,7 +97,26 @@
                            displayType="BALLOON"
                            toolWindowId="Event Log"/>
 
+        <!-- Panel-only mode toggle (Settings | Tools | RepoBuddy) -->
+        <applicationConfigurable parentId="tools"
+                                 id="com.repoinspector.settings.RepoBuddyConfigurable"
+                                 instance="com.repoinspector.settings.RepoBuddyConfigurable"
+                                 displayName="RepoBuddy"/>
+
+        <!-- Top-of-file banner counting RepoBuddy issues in the current file -->
+        <editorNotificationProvider
+                implementation="com.repoinspector.ui.RepoBuddyEditorBanner"/>
+
+        <!-- Status-bar counter for RepoBuddy issues in the current file -->
+        <statusBarWidgetFactory id="RepoBuddy.IssuesCount"
+                                implementation="com.repoinspector.ui.RepoBuddyStatusBarWidgetFactory"/>
+
     </extensions>
+
+    <projectListeners>
+        <listener class="com.repoinspector.ui.RepoBuddyEditorSelectionListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
 
     <applicationListeners>
         <listener class="com.repoinspector.runner.startup.AgentConfigCleaner"

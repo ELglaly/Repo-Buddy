@@ -6,10 +6,13 @@ Reports methods that write to the database without transactional context.
         <code>@Modifying</code> query method that is neither annotated
         <code>@Transactional</code> nor declared in a <code>@Transactional</code> class
         throws at runtime unless every caller already runs inside a transaction.</li>
-    <li><b>EntityManager writes</b> &ndash; a method body that calls
+    <li><b>JPA / Hibernate / JDBC writes</b> &ndash; a method body that calls JPA
         <code>persist</code>, <code>merge</code>, <code>remove</code>, <code>flush</code>,
-        or <code>Query.executeUpdate()</code> outside a transaction throws
-        <code>TransactionRequiredException</code>.</li>
+        or <code>Query.executeUpdate()</code>; a Hibernate <code>Session</code> mutator
+        (<code>save</code>/<code>update</code>/<code>saveOrUpdate</code>/<code>delete</code>);
+        or a <code>JdbcTemplate</code> <code>update</code>/<code>batchUpdate</code>/<code>execute</code>
+        outside a transaction. JPA/Hibernate writes throw
+        <code>TransactionRequiredException</code>; JDBC writes auto-commit individually.</li>
     <li><b>Repository write calls</b> &ndash; a method that calls repository
         <code>save</code>/<code>delete</code>/<code>update</code> operations without
         <code>@Transactional</code>; important when several writes must commit atomically.
@@ -19,6 +22,11 @@ Reports methods that write to the database without transactional context.
 Jakarta/<code>javax</code> <code>@Transactional</code> annotations are recognised as
 satisfying the requirement.</p>
 <p>Private methods are ignored by default because Spring's proxy cannot apply
-<code>@Transactional</code> to them; static methods are always skipped.</p>
+<code>@Transactional</code> to them. Static methods that write are reported with a distinct
+message and no quick-fix, since Spring cannot proxy a static method &mdash; the remedy is to
+refactor to an instance method or manage the transaction manually.</p>
+<p><i>By default RepoBuddy runs in panel-only mode: these findings appear in the RepoBuddy
+<b>Issues</b> tab, the editor banner, and the status-bar counter rather than inline. Disable
+panel-only mode under <b>Settings | Tools | RepoBuddy</b> to see them as ordinary editor warnings.</i></p>
 </body>
 </html>

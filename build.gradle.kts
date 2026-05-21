@@ -48,6 +48,18 @@ dependencies {
     }
 }
 
+intellijPlatform {
+    pluginVerification {
+        ides {
+            // IntelliJ IDEA Community is published separately only through 2025.2 (252).
+            // 2025.3+ ships the unified distribution, whose reorganized layout the current
+            // Plugin Verifier (1.405) can't read, so we verify against the latest IC builds.
+            create("IC", "2025.1")
+            create("IC", "2025.2")
+        }
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 }

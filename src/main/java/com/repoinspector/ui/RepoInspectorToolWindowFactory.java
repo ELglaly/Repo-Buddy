@@ -8,10 +8,11 @@ import com.intellij.ui.content.ContentFactory;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Creates the "Repo Buddy" tool window with two tabs:
+ * Creates the "Repo Buddy" tool window with three tabs:
  * <ol>
  *   <li>"Repository Usage" — call-count table ({@link RepoInspectorPanel})</li>
  *   <li>"Call Chain Tracer" — per-endpoint repository tracer ({@link CallChainPanel})</li>
+ *   <li>"Issues" — RepoBuddy inspection findings ({@link RepoIssuesPanel})</li>
  * </ol>
  */
 public class RepoInspectorToolWindowFactory implements ToolWindowFactory {
@@ -30,5 +31,10 @@ public class RepoInspectorToolWindowFactory implements ToolWindowFactory {
         Content chainContent = contentFactory.createContent(chainPanel, "Call Chain Tracer", false);
         toolWindow.getContentManager().addContent(chainContent);
 
+        // Tab 3: inspection findings
+        RepoIssuesPanel issuesPanel = new RepoIssuesPanel(project);
+        Content issuesContent = contentFactory.createContent(issuesPanel, "Issues", false);
+        issuesContent.setDisposer(issuesPanel);
+        toolWindow.getContentManager().addContent(issuesContent);
     }
 }

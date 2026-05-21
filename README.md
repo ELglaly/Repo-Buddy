@@ -87,9 +87,12 @@ Click the ⌕|✎ gutter icon next to any Spring Data repository method. Fill in
 
 ### Code Inspections
 
-RepoBuddy ships live IntelliJ inspections for common Spring Data JPA pitfalls. Each one
-highlights in the editor, appears in the **Problems** tool window, and is configurable
-under **Settings → Editor → Inspections → RepoBuddy**.
+RepoBuddy ships five inspections for common Spring Data JPA pitfalls. By default they run in
+**panel-only mode**: findings are collected into the dedicated **Issues** tab (see below) and
+counted by the editor banner and status-bar indicator, instead of adding inline editor underlines
+or **Problems**-view entries. Turn panel-only mode off under **Settings → Tools → RepoBuddy** to
+make them behave as ordinary editor inspections (inline underlines + Problems view); each one is
+then also configurable under **Settings → Editor → Inspections → RepoBuddy**.
 
 - **Unsafe `@Query`** — flags `@Query` declarations that are likely to misbehave:
   - **Missing `@Param`** — a named bind parameter (e.g. `:name`) with no matching
@@ -122,6 +125,24 @@ under **Settings → Editor → Inspections → RepoBuddy**.
   (`@OneToMany`/`@ManyToMany`, or `@ManyToOne`/`@OneToOne` with `fetch = LAZY`). Associations
   with a large enough Hibernate `@BatchSize` are ignored (configurable). Report-only — the fix
   (`JOIN FETCH` or `@EntityGraph`) belongs in the loading query.
+
+- **`@Transactional` self-invocation** — flags a call to a `@Transactional` method from another
+  method of the same class through `this` (or no qualifier). Spring's proxy-based transaction
+  support is bypassed on self-invocation, so the callee's propagation / isolation / rollback
+  settings silently do not apply. Report-only — route the call through an injected self-reference
+  or move the method to another bean.
+
+#### Issues Panel & Indicators
+
+- **Issues tab** in the RepoBuddy tool window lists every finding across the project — or just the
+  open file via the **Current file** toggle — with live search, sortable columns, double-click
+  navigation to source, and CSV export.
+- **Editor banner** at the top of any file with findings shows `RepoBuddy: N issues in this file`
+  with a one-click link to the Issues tab (dismissible per file).
+- **Status-bar counter** shows how many RepoBuddy issues are in the current file; click it to open
+  the Issues tab.
+- All three read from a single shared background scan, so they stay in sync and never re-analyze a
+  file three times.
 
 ### Zero Configuration
 - **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2023.2+)

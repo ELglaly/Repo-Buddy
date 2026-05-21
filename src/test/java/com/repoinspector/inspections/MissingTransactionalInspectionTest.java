@@ -12,7 +12,8 @@ import java.util.List;
  */
 public class MissingTransactionalInspectionTest extends LightJavaCodeInsightFixtureTestCase {
 
-    private final MissingTransactionalInspection inspection = new MissingTransactionalInspection();
+    // alwaysAnalyze = true bypasses panel-only gating so these tests exercise the analysis logic.
+    private final MissingTransactionalInspection inspection = new MissingTransactionalInspection(true);
 
     @Override
     protected void setUp() throws Exception {
@@ -32,6 +33,10 @@ public class MissingTransactionalInspectionTest extends LightJavaCodeInsightFixt
                 + " import org.springframework.data.repository.Repository;"
                 + " public interface JpaRepository<T, ID> extends Repository<T, ID> {"
                 + " <S extends T> S save(S entity); void delete(T entity); }");
+        myFixture.addClass("package org.hibernate; public interface Session {"
+                + " void save(Object e); void delete(Object e); void persist(Object e); }");
+        myFixture.addClass("package org.springframework.jdbc.core; public class JdbcTemplate {"
+                + " public int update(String sql) { return 0; } public void execute(String sql) {} }");
         myFixture.addClass("package com.example; public class User {}");
         myFixture.enableInspections(inspection);
     }
@@ -80,42 +85,42 @@ public class MissingTransactionalInspectionTest extends LightJavaCodeInsightFixt
         assertEquals(1, warnings(
                 highlight("class UserDao { private EntityManager em;"
                         + " void deleteAll() { em.createQuery(\"DELETE FROM User u\").executeUpdate(); } }"),
-                "JPA write"));
+                "database write"));
     }
 
     public void testPersistWithoutTransactional_isFlagged() {
         assertEquals(1, warnings(
                 highlight("class UserDao { private EntityManager em;"
                         + " void add(User u) { em.persist(u); } }"),
-                "JPA write"));
+                "database write"));
     }
 
     public void testEntityManagerWriteWithMethodTransactional_notFlagged() {
         assertEquals(0, warnings(
                 highlight("class UserDao { private EntityManager em;"
                         + " @Transactional void add(User u) { em.persist(u); } }"),
-                "JPA write"));
+                "database write"));
     }
 
     public void testEntityManagerWriteWithClassTransactional_notFlagged() {
         assertEquals(0, warnings(
                 highlight("@Transactional class UserDao { private EntityManager em;"
                         + " void add(User u) { em.persist(u); } }"),
-                "JPA write"));
+                "database write"));
     }
 
     public void testPrivateMethod_notFlaggedByDefault() {
         assertEquals(0, warnings(
                 highlight("class UserDao { private EntityManager em;"
                         + " private void add(User u) { em.persist(u); } }"),
-                "JPA write"));
+                "database write"));
     }
 
     public void testReadOnlyQuery_notFlagged() {
         assertEquals(0, warnings(
                 highlight("class UserDao { private EntityManager em;"
                         + " Object all() { return em.createQuery(\"SELECT u FROM User u\").getResultList(); } }"),
-                "JPA write"));
+                "database write"));
     }
 
     // ── Check C: repository write calls (opt-in) ──────────────────────────────
@@ -144,6 +149,85 @@ public class MissingTransactionalInspectionTest extends LightJavaCodeInsightFixt
                 highlight("class CartItem { private int q; public void setQuantity(int q){this.q=q;} }\n"
                         + "class CartService { void touch(CartItem item) { item.setQuantity(5); } }"),
                 "repository write operations"));
+    }
+
+    // ── Check D: JDBC + Hibernate-native writes ───────────────────────────────
+
+    public void testJdbcUpdateWithoutTransactional_isFlagged() {
+        assertEquals(1, warnings(
+                highlight("class UserDao { private org.springframework.jdbc.core.JdbcTemplate jdbc;"
+                        + " void purge() { jdbc.update(\"DELETE FROM users\"); } }"),
+                "database write"));
+    }
+
+    public void testJdbcUpdateWithTransactional_notFlagged() {
+        assertEquals(0, warnings(
+                highlight("class UserDao { private org.springframework.jdbc.core.JdbcTemplate jdbc;"
+                        + " @Transactional void purge() { jdbc.update(\"DELETE FROM users\"); } }"),
+                "database write"));
+    }
+
+    public void testHibernateSaveWithoutTransactional_isFlagged() {
+        assertEquals(1, warnings(
+                highlight("class UserDao { private org.hibernate.Session session;"
+                        + " void add(User u) { session.save(u); } }"),
+                "database write"));
+    }
+
+    // ── Check E: static methods ───────────────────────────────────────────────
+
+    public void testStaticMethodWithWrite_flaggedAsStatic() {
+        assertEquals(1, warnings(
+                highlight("class UserDao { private static EntityManager em;"
+                        + " static void add(User u) { em.persist(u); } }"),
+                "static"));
+    }
+
+    public void testStaticMethodWithWrite_noQuickFix() {
+        myFixture.configureByText("UserDao.java",
+                "import jakarta.persistence.EntityManager;\n"
+                        + "class UserDao {\n"
+                        + "  private static EntityManager em;\n"
+                        + "  static void add<caret>(Object u) { em.persist(u); }\n"
+                        + "}\n");
+        myFixture.doHighlighting();
+        assertEmpty(myFixture.filterAvailableIntentions("Annotate method with @Transactional"));
+    }
+
+    // ── Check F: transitive write through a private helper ────────────────────
+
+    public void testTransitiveWriteThroughPrivateHelper_flagged() {
+        assertEquals(1, warnings(
+                highlight("class Svc { private EntityManager em;"
+                        + " void create(User u) { doSave(u); }"
+                        + " private void doSave(User u) { em.persist(u); } }"),
+                "private helper"));
+    }
+
+    public void testTransitiveWriteTwoHopsThroughPrivateHelpers_flagged() {
+        assertEquals(1, warnings(
+                highlight("class Svc { private EntityManager em;"
+                        + " void create(User u) { step1(u); }"
+                        + " private void step1(User u) { step2(u); }"
+                        + " private void step2(User u) { em.persist(u); } }"),
+                "private helper"));
+    }
+
+    public void testTransitiveNoWrite_notFlagged() {
+        assertEquals(0, warnings(
+                highlight("class Svc { private EntityManager em;"
+                        + " void create() { compute(); }"
+                        + " private void compute() { int x = 1; } }"),
+                "private helper"));
+    }
+
+    public void testTransitiveDisabled_notFlagged() {
+        inspection.analyzeCalledMethods = false;
+        assertEquals(0, warnings(
+                highlight("class Svc { private EntityManager em;"
+                        + " void create(User u) { doSave(u); }"
+                        + " private void doSave(User u) { em.persist(u); } }"),
+                "private helper"));
     }
 
     // ── quick-fix ─────────────────────────────────────────────────────────────

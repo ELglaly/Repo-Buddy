@@ -11,7 +11,8 @@ import java.util.List;
  */
 public class NPlusOneQueryInspectionTest extends LightJavaCodeInsightFixtureTestCase {
 
-    private final NPlusOneQueryInspection inspection = new NPlusOneQueryInspection();
+    // alwaysAnalyze = true bypasses panel-only gating so these tests exercise the analysis logic.
+    private final NPlusOneQueryInspection inspection = new NPlusOneQueryInspection(true);
 
     @Override
     protected void setUp() throws Exception {
@@ -29,8 +30,10 @@ public class NPlusOneQueryInspectionTest extends LightJavaCodeInsightFixtureTest
                 + " public @interface OneToOne { FetchType fetch() default FetchType.EAGER; }");
         myFixture.addClass("package org.hibernate.annotations; public @interface BatchSize { int size(); }");
         // JDK collection stubs (light test JDK does not resolve java.util)
-        myFixture.addClass("package java.util; public interface Collection<E> {}");
-        myFixture.addClass("package java.util; public interface List<E> extends Collection<E> {}");
+        myFixture.addClass("package java.util; public interface Collection<E> extends Iterable<E> {}");
+        myFixture.addClass("package java.util;"
+                + " public interface List<E> extends Collection<E> { int size(); E get(int index); }");
+        myFixture.addClass("package java.util; public final class Optional<T> {}");
 
         myFixture.addClass("package com.example; import jakarta.persistence.Entity;"
                 + " @Entity public class Company { private Long id; public Long getId() { return id; } }");
@@ -65,7 +68,63 @@ public class NPlusOneQueryInspectionTest extends LightJavaCodeInsightFixtureTest
                 + "   public List<Object> getAddresses() { return addresses; }"
                 + " }");
 
+        // Spring Data repository stubs
+        myFixture.addClass("package org.springframework.data.repository;"
+                + " public interface Repository<T, ID> {}");
+        myFixture.addClass("package org.springframework.data.jpa.repository;"
+                + " import org.springframework.data.repository.Repository;"
+                + " import java.util.List; import java.util.Optional;"
+                + " public interface JpaRepository<T, ID> extends Repository<T, ID> {"
+                + "   Optional<T> findById(ID id);"
+                + "   List<T> findAll();"
+                + "   List<T> findAllById(Iterable<ID> ids);"
+                + "   <S extends T> S save(S entity);"
+                + "   void delete(T entity); }");
+        myFixture.addClass("package com.example;"
+                + " import org.springframework.data.jpa.repository.JpaRepository;"
+                + " public interface UserRepository extends JpaRepository<User, Long> {}");
+
+        // JPA EntityManager stubs
+        myFixture.addClass("package jakarta.persistence; public interface Query {"
+                + " Object getResultList(); Object getSingleResult(); }");
+        myFixture.addClass("package jakarta.persistence; public interface EntityManager {"
+                + " <T> T find(Class<T> type, Object id); Query createQuery(String ql); }");
+
         myFixture.enableInspections(inspection);
+    }
+
+    private List<HighlightInfo> repoInLoop(String loopBody) {
+        myFixture.configureByText("Service.java",
+                "import java.util.List;\n"
+                        + "import com.example.User;\n"
+                        + "import com.example.UserRepository;\n"
+                        + "import jakarta.persistence.EntityManager;\n"
+                        + "class Service {\n"
+                        + "  UserRepository repo;\n"
+                        + "  EntityManager em;\n"
+                        + "  void process(List<User> users) {\n"
+                        + "    for (User user : users) {\n"
+                        + "      " + loopBody + "\n"
+                        + "    }\n"
+                        + "  }\n"
+                        + "}\n");
+        return myFixture.doHighlighting();
+    }
+
+    private List<HighlightInfo> repoInService(String methodBody) {
+        myFixture.configureByText("Service.java",
+                "import java.util.List;\n"
+                        + "import com.example.User;\n"
+                        + "import com.example.UserRepository;\n"
+                        + "import jakarta.persistence.EntityManager;\n"
+                        + "class Service {\n"
+                        + "  UserRepository repo;\n"
+                        + "  EntityManager em;\n"
+                        + "  void process(List<User> users) {\n"
+                        + "    " + methodBody + "\n"
+                        + "  }\n"
+                        + "}\n");
+        return myFixture.doHighlighting();
     }
 
     private List<HighlightInfo> inLoop(String loopBody) {
@@ -210,5 +269,103 @@ public class NPlusOneQueryInspectionTest extends LightJavaCodeInsightFixtureTest
                         + "  }\n"
                         + "}\n");
         assertEquals(0, warnings(myFixture.doHighlighting()));
+    }
+
+    // ── query call in loop ─────────────────────────────────────────────────────
+
+    public void testRepoFindByIdInForEach_flagged() {
+        assertEquals(1, warnings(repoInLoop("repo.findById(user.getId());")));
+    }
+
+    public void testRepoSaveInForEach_flagged() {
+        assertEquals(1, warnings(repoInLoop("repo.save(user);")));
+    }
+
+    public void testEntityManagerFindInForEach_flagged() {
+        assertEquals(1, warnings(repoInLoop("em.find(User.class, user.getId());")));
+    }
+
+    public void testEntityManagerQueryGetResultListInForEach_flagged() {
+        assertEquals(1, warnings(repoInLoop("em.createQuery(\"x\").getResultList();")));
+    }
+
+    public void testRepoCallOutsideLoop_notFlagged() {
+        assertEquals(0, warnings(repoInService("repo.findAllById(null);")));
+    }
+
+    public void testRepoCallAsLoopSource_notFlagged() {
+        myFixture.configureByText("Service.java",
+                "import java.util.List;\n"
+                        + "import com.example.User;\n"
+                        + "import com.example.UserRepository;\n"
+                        + "class Service {\n"
+                        + "  UserRepository repo;\n"
+                        + "  void process() {\n"
+                        + "    for (User user : repo.findAll()) {\n"
+                        + "      user.getId();\n"
+                        + "    }\n"
+                        + "  }\n"
+                        + "}\n");
+        assertEquals(0, warnings(myFixture.doHighlighting()));
+    }
+
+    public void testRepoCallInIndexedFor_flagged() {
+        assertEquals(1, warnings(repoInService(
+                "for (int i = 0; i < users.size(); i++) { repo.findById(users.get(i).getId()); }")));
+    }
+
+    public void testRepoCallInWhile_flagged() {
+        assertEquals(1, warnings(repoInService(
+                "int i = 0; while (i < users.size()) { repo.findById(users.get(i).getId()); i++; }")));
+    }
+
+    public void testRepoCallInStreamMap_flagged() {
+        assertEquals(1, warnings(repoInService(
+                "users.stream().map((User user) -> repo.findById(user.getId()));")));
+    }
+
+    public void testRepoMethodReferenceInForEach_flagged() {
+        assertEquals(1, warnings(repoInService("users.forEach(repo::delete);")));
+    }
+
+    public void testRepoCallInDeferredLambda_notFlagged() {
+        // A non-iteration lambda is a separate execution context, not a per-iteration loop body.
+        assertEquals(0, warnings(repoInService(
+                "Runnable r = () -> repo.findAll();")));
+    }
+
+    public void testNonDataAccessCallInLoop_notFlagged() {
+        assertEquals(0, warnings(repoInLoop("user.getId();")));
+    }
+
+    public void testQueryInLoopDisabled_notFlagged() {
+        inspection.reportQueryCallsInLoops = false;
+        assertEquals(0, warnings(repoInLoop("repo.findById(user.getId());")));
+    }
+
+    // ── lazy access via element access in indexed-for / while ──────────────────
+
+    public void testLazyAccessIndexedForViaGet_flagged() {
+        assertEquals(1, warnings(repoInService(
+                "for (int i = 0; i < users.size(); i++) { users.get(i).getAddresses(); }")));
+    }
+
+    public void testLazyAccessWhileViaGet_flagged() {
+        assertEquals(1, warnings(repoInService(
+                "int i = 0; while (i < users.size()) { users.get(i).getRoles(); i++; }")));
+    }
+
+    public void testEagerAccessIndexedFor_notFlagged() {
+        assertEquals(0, warnings(repoInService(
+                "for (int i = 0; i < users.size(); i++) { users.get(i).getCompany(); }")));
+    }
+
+    public void testIdGetterIndexedFor_notFlagged() {
+        assertEquals(0, warnings(repoInService(
+                "for (int i = 0; i < users.size(); i++) { users.get(i).getId(); }")));
+    }
+
+    public void testElementAccessOutsideLoop_notFlagged() {
+        assertEquals(0, warnings(repoInService("users.get(0).getAddresses();")));
     }
 }

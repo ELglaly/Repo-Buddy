@@ -1,0 +1,27 @@
+<html>
+<body>
+Reports Spring's <b>self-invocation</b> pitfall: calling a <code>@Transactional</code> method
+from another method of the <i>same class</i> via <code>this</code> (or with no qualifier).
+<pre>
+class OrderService {
+    public void process(Order o) {
+        save(o);            // bypasses the proxy — @Transactional ignored
+    }
+    @Transactional
+    public void save(Order o) { ... }
+}
+</pre>
+<p>Spring's transaction management is proxy-based: external callers go through a generated
+proxy that opens the transaction, but an internal call reaches the target instance directly,
+so the annotation's settings (propagation, isolation, rollback rules,
+<code>REQUIRES_NEW</code>, …) silently do not apply.</p>
+<p>Fixes: move the transactional method to a separate bean, inject a self-reference and call
+through it, or make the calling method itself transactional. A call routed through a different
+bean reference is not flagged because it passes through the proxy.</p>
+<p>Only method-level <code>@Transactional</code> callees are reported, to avoid noise from
+every internal call inside a class-level <code>@Transactional</code> service.</p>
+<p><i>By default RepoBuddy runs in panel-only mode: these findings appear in the RepoBuddy
+<b>Issues</b> tab, the editor banner, and the status-bar counter rather than inline. Disable
+panel-only mode under <b>Settings | Tools | RepoBuddy</b> to see them as ordinary editor warnings.</i></p>
+</body>
+</html>

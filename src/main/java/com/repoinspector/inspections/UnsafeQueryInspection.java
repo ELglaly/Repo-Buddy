@@ -1,6 +1,5 @@
 package com.repoinspector.inspections;
 
-import com.intellij.codeInspection.AbstractBaseJavaLocalInspectionTool;
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ProblemsHolder;
@@ -42,11 +41,14 @@ import static com.intellij.codeInspection.options.OptPane.pane;
  *       the operands to be compile-time constants, so this is a style check).</li>
  * </ul>
  */
-public class UnsafeQueryInspection extends AbstractBaseJavaLocalInspectionTool {
+public class UnsafeQueryInspection extends RepoBuddyLocalInspection {
 
     @SuppressWarnings("WeakerAccess") public boolean checkMissingParam = true;
     @SuppressWarnings("WeakerAccess") public boolean flagSpel = true;
     @SuppressWarnings("WeakerAccess") public boolean allowConcatenationForConstants = false;
+
+    @SuppressWarnings("unused") public UnsafeQueryInspection() {}
+    public UnsafeQueryInspection(boolean alwaysAnalyze) { super(alwaysAnalyze); }
 
     @Override
     public @NotNull OptPane getOptionsPane() {
@@ -62,6 +64,7 @@ public class UnsafeQueryInspection extends AbstractBaseJavaLocalInspectionTool {
 
     @Override
     public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
+        if (!shouldAnalyze()) return PsiElementVisitor.EMPTY_VISITOR;
         return new JavaElementVisitor() {
             @Override
             public void visitMethod(@NotNull PsiMethod method) {

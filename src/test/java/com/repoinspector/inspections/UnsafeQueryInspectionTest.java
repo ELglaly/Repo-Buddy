@@ -13,7 +13,8 @@ import java.util.List;
  */
 public class UnsafeQueryInspectionTest extends LightJavaCodeInsightFixtureTestCase {
 
-    private final UnsafeQueryInspection inspection = new UnsafeQueryInspection();
+    // alwaysAnalyze = true bypasses panel-only gating so these tests exercise the analysis logic.
+    private final UnsafeQueryInspection inspection = new UnsafeQueryInspection(true);
 
     @Override
     protected void setUp() throws Exception {

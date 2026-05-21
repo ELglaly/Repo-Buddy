@@ -1,6 +1,5 @@
 package com.repoinspector.inspections;
 
-import com.intellij.codeInspection.AbstractBaseJavaLocalInspectionTool;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ProblemsHolder;
 import com.intellij.codeInspection.options.OptPane;
@@ -35,9 +34,12 @@ import static com.intellij.codeInspection.options.OptPane.pane;
  * returns {@code Page}/{@code Slice}, is name-limited ({@code findFirst}/{@code findTop}),
  * or its {@code @Query} contains a {@code LIMIT}.
  */
-public class MissingPaginationInspection extends AbstractBaseJavaLocalInspectionTool {
+public class MissingPaginationInspection extends RepoBuddyLocalInspection {
 
     @SuppressWarnings("WeakerAccess") public boolean onlyWarnForFindAll = true;
+
+    @SuppressWarnings("unused") public MissingPaginationInspection() {}
+    public MissingPaginationInspection(boolean alwaysAnalyze) { super(alwaysAnalyze); }
 
     @Override
     public @NotNull OptPane getOptionsPane() {
@@ -49,6 +51,7 @@ public class MissingPaginationInspection extends AbstractBaseJavaLocalInspection
 
     @Override
     public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
+        if (!shouldAnalyze()) return PsiElementVisitor.EMPTY_VISITOR;
         return new JavaElementVisitor() {
             @Override
             public void visitMethod(@NotNull PsiMethod method) {
