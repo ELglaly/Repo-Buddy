@@ -1,3 +1,12 @@
+<h3>1.0.6 - Code Quality Inspections &amp; IDE Integration</h3>
+<ul>
+  <li>New <b>Self-Invocation</b> inspection: detects <code>@Transactional</code> and <code>@Cacheable</code> methods called via <code>this.</code>, which bypasses Spring's proxy and silently drops the annotation's effect.</li>
+  <li>New <b>Issues Panel</b> tool window with a dedicated status bar widget and editor banner for at-a-glance code quality feedback.</li>
+  <li>Expanded <b>@Transactional</b> and <b>N+1 query</b> detection to cover more Spring Data and JPA patterns.</li>
+  <li>Added per-project <b>Settings</b> page to enable or disable individual inspections.</li>
+  <li>Introduced whole-project <b>inspection scanner</b> with background scan support.</li>
+</ul>
+
 <h3>1.0.5 - Spring Boot 2.x Support &amp; Clean Uninstall</h3>
 <ul>
   <li>Extended agent compatibility to Spring Boot 2.7.x, 3.x, and future 4.x releases.</li>
