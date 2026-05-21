@@ -77,6 +77,7 @@ tasks {
             layout.projectDirectory.file("src/main/resources/META-INF/change-notes.html")
         ).asText
         sinceBuild = "232"
+        untilBuild = provider { null }
     }
 
     publishPlugin {
