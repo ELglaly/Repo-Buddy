@@ -36,7 +36,6 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
-    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.11.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.11.0")
@@ -45,18 +44,6 @@ dependencies {
         create("IC", "2025.1")
         bundledPlugin("com.intellij.java")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
-    }
-}
-
-intellijPlatform {
-    pluginVerification {
-        ides {
-            // IntelliJ IDEA Community is published separately only through 2025.2 (252).
-            // 2025.3+ ships the unified distribution, whose reorganized layout the current
-            // Plugin Verifier (1.405) can't read, so we verify against the latest IC builds.
-            create("IC", "2025.1")
-            create("IC", "2025.2")
-        }
     }
 }
 
@@ -89,7 +76,6 @@ tasks {
             layout.projectDirectory.file("src/main/resources/META-INF/change-notes.html")
         ).asText
         sinceBuild = "232"
-        untilBuild = provider { null }
     }
 
     publishPlugin {

@@ -1,0 +1,290 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<style>
+:root{
+  --bg:#1e1f22;--panel:#2b2d30;--panel2:#26282b;--toolbar:#313438;
+  --ink:#dfe1e5;--ink2:#c2c5ca;--ink-dim:#9ba0a8;
+  --border:#1e1f22;--border-sub:#393b40;
+  --gold:#e8bf5a;--gold-sub:#3a2e12;
+  --indigo:#9b94f5;--indigo-sub:#252346;
+  --teal:#45b5aa;--teal-sub:#0d2e2c;
+  --rose:#fb7185;--rose-sub:#3d0018;
+  --amber:#e3b341;--amber-sub:#3d2f0f;
+  --hover:#393b40;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;color:var(--ink)}
+.root{height:100%;display:flex;flex-direction:column}
+.tb{background:var(--panel);height:22px;display:flex;align-items:center;padding:0 10px;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.dot{width:9px;height:9px;border-radius:50%}.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+
+/* Gradient header — matches GradientHeader + miniStatCard + HealthScoreRing */
+.hdr{background:linear-gradient(135deg,#1E1B4B 0%,#1C1333 100%);border-bottom:1px solid #312E81;
+  padding:5px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;height:52px}
+.hdr-icon{font-size:15px;flex-shrink:0}
+.hdr-col{flex:1}
+.hdr-title{font-size:12px;font-weight:700;color:#E0E7FF;line-height:1.3}
+.hdr-sub{font-size:9px;color:#818CF8;line-height:1.2}
+.stat-cards{display:flex;gap:5px;flex-shrink:0}
+.sc{border-radius:8px;padding:3px 9px;text-align:center;min-width:48px}
+.sc-i{background:var(--indigo-sub)}.sc-r{background:var(--rose-sub)}.sc-t{background:var(--teal-sub)}
+.sc-n{font-size:14px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
+.sc-ni{color:var(--indigo)}.sc-nr{color:var(--rose)}.sc-nt{color:var(--teal)}
+.sc-l{font-size:8px;color:var(--ink-dim);line-height:1.2}
+.health{flex-shrink:0}
+
+/* Toolbar — matches buildCenter toolbar */
+.bar{background:var(--toolbar);border-bottom:1px solid var(--border-sub);display:flex;align-items:center;
+  gap:4px;padding:3px 8px;height:28px;flex-shrink:0}
+.srch{display:flex;align-items:center;gap:3px;border:1px solid var(--border-sub);border-radius:4px;
+  padding:1px 6px;background:var(--panel);width:154px;height:20px}
+.si{font-size:9px;color:var(--ink-dim);flex-shrink:0}
+.st{background:transparent;border:none;outline:none;font-size:10px;color:var(--ink);width:100%;font-family:inherit}
+.st::placeholder{color:var(--ink-dim)}
+.cur{display:none;width:1px;height:9px;background:var(--indigo);animation:blink .8s step-start infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.sep{width:1px;height:13px;background:var(--border-sub);flex-shrink:0}
+.tog{font-size:9.5px;padding:1px 6px;border:1px solid var(--border-sub);border-radius:3px;
+  background:var(--panel);color:var(--ink);font-family:inherit;height:20px;white-space:nowrap}
+.tog.on{background:var(--indigo-sub);color:var(--indigo);border-color:var(--indigo)}
+.ibtn{width:20px;height:20px;display:flex;align-items:center;justify-content:center;
+  background:transparent;border:none;color:var(--ink-dim);border-radius:3px;font-size:12px}
+.f1{flex:1}
+.run{background:#5fb865;color:#fff;border:none;border-radius:3px;padding:1px 9px;
+  font-size:9.5px;font-weight:700;font-family:inherit;height:20px}
+
+/* Table — matches JBTable with 5 columns */
+.tw{flex:1;overflow:auto;background:var(--panel)}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead th{background:var(--toolbar);color:var(--ink-dim);font-weight:600;text-align:left;
+  padding:3px 6px;border-bottom:1px solid var(--border-sub);position:sticky;top:0;z-index:2;
+  white-space:nowrap;font-size:9.5px}
+.c-repo{width:108px}.c-meth{width:116px}.c-sig{min-width:60px}.c-op{width:50px}.c-calls{width:58px}
+tbody tr{background:var(--panel);cursor:pointer;opacity:0;transform:translateY(3px);
+  transition:opacity .2s ease,transform .2s ease}
+tbody tr.in{opacity:1;transform:none}
+tbody tr.gone{display:none}
+tbody tr:hover{background:var(--hover)}
+td{padding:3px 6px;vertical-align:middle;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+/* Cell renderers — gold/indigo/muted/op/calls badges matching Java renderers */
+.bg{display:inline-block;border-radius:10px;padding:1px 7px;font-size:9px;font-weight:700;
+  font-family:'JetBrains Mono',Consolas,monospace;white-space:nowrap;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis}
+.bg-gold{background:var(--gold-sub);color:var(--gold)}
+.bg-indigo{background:var(--indigo-sub);color:var(--indigo)}
+.bg-muted{background:var(--panel2);color:var(--ink-dim);font-weight:400}
+.bg-read{background:var(--teal-sub);color:var(--teal);border-radius:4px;font-size:8.5px}
+.bg-write{background:var(--amber-sub);color:var(--amber);border-radius:4px;font-size:8.5px}
+/* calls pill: dot + number */
+.cp{display:inline-flex;align-items:center;gap:3px;border-radius:9px;padding:1px 7px;
+  font-size:9px;font-weight:700}
+.cp-t{background:var(--teal-sub);color:var(--teal)}.cp-td{background:var(--teal);width:6px;height:6px;border-radius:50%}
+.cp-a{background:var(--amber-sub);color:var(--amber)}.cp-ad{background:var(--amber);width:6px;height:6px;border-radius:50%}
+.cp-r{background:var(--rose-sub);color:var(--rose)}.cp-rd{background:var(--rose);width:6px;height:6px;border-radius:50%}
+
+/* Status bar */
+.sb{background:var(--toolbar);border-top:1px solid var(--border-sub);display:flex;align-items:center;
+  justify-content:space-between;padding:2px 10px;height:20px;flex-shrink:0;font-size:9px;color:var(--ink-dim)}
+.sb-pill{display:inline-block;padding:0 6px;border-radius:3px;font-size:9px;font-weight:700}
+.sp-def{background:var(--panel2);color:var(--ink-dim)}
+</style></head><body>
+<div class="root">
+  <div class="tb">
+    <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+  </div>
+
+  <!-- GradientHeader: icon + title/sub + 3 stat cards + health ring -->
+  <div class="hdr">
+    <span class="hdr-icon">📊</span>
+    <div class="hdr-col">
+      <div class="hdr-title">Repository Usage</div>
+      <div class="hdr-sub">Spring Data JPA analysis</div>
+    </div>
+    <div class="stat-cards">
+      <div class="sc sc-i"><div class="sc-n sc-ni" id="nm">0</div><div class="sc-l">Methods</div></div>
+      <div class="sc sc-r"><div class="sc-n sc-nr" id="nu">0</div><div class="sc-l">Unused</div></div>
+      <div class="sc sc-t"><div class="sc-n sc-nt" id="nr">0</div><div class="sc-l">Repos</div></div>
+    </div>
+    <!-- HealthScoreRing SVG -->
+    <svg class="health" width="38" height="38" viewBox="0 0 38 38">
+      <circle cx="19" cy="19" r="13" fill="none" stroke="#393b40" stroke-width="4.5"/>
+      <circle cx="19" cy="19" r="13" fill="none" stroke="#45b5aa" stroke-width="4.5"
+        stroke-linecap="round" stroke-dasharray="0 81.7" id="arc" transform="rotate(-90 19 19)"/>
+      <text x="19" y="23" font-size="8" font-weight="700" fill="#45b5aa" text-anchor="middle"
+        font-family="-apple-system,sans-serif" id="arcTxt">0%</text>
+    </svg>
+  </div>
+
+  <!-- Toolbar: search · Unused only · Current file · ↧ · ↻ · | · Run▶ -->
+  <div class="bar">
+    <div class="srch">
+      <span class="si">🔍</span>
+      <input class="st" id="srch" placeholder="Search repository or method…" readonly/>
+      <span class="cur" id="cur"></span>
+    </div>
+    <div class="sep"></div>
+    <button class="tog" id="unusedTog">Unused only</button>
+    <button class="tog" id="cfTog">Current file</button>
+    <div class="f1"></div>
+    <span class="ibtn">↧</span><span class="ibtn">↻</span>
+    <div class="sep"></div>
+    <button class="run">Run ▶</button>
+  </div>
+
+  <!-- JBTable: Repository · Method · Signature · Op · Calls -->
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th class="c-repo">Repository</th>
+        <th class="c-meth">Method</th>
+        <th class="c-sig">Signature</th>
+        <th class="c-op">Op</th>
+        <th class="c-calls">Calls</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Status bar: "X methods · Y unused" | hint -->
+  <div class="sb">
+    <span><span class="sb-pill sp-def" id="stTotal">0 methods</span></span>
+    <span>Double-click to navigate · ↵ Run</span>
+  </div>
+</div>
+<script>
+const DATA = [
+  {repo:'UserRepository',    method:'findByEmail()',        sig:'findByEmail(String email)',         op:'READ',  calls:142},
+  {repo:'UserRepository',    method:'findAllActive()',      sig:'findAllActive(Pageable p)',          op:'READ',  calls:87},
+  {repo:'OrderRepository',   method:'findByOrderId()',      sig:'findByOrderId(Long id)',             op:'READ',  calls:34},
+  {repo:'OrderRepository',   method:'save()',               sig:'save(Order order)',                  op:'WRITE', calls:22},
+  {repo:'ProductRepository', method:'findAllByCategory()',  sig:'findAllByCategory(String cat)',      op:'READ',  calls:6},
+  {repo:'OrderRepository',   method:'findByCreatedAfter()', sig:'findByCreatedAfter(LocalDate d)',    op:'READ',  calls:3},
+  {repo:'UserRepository',    method:'findAllDeleted()',     sig:'findAllDeleted()',                   op:'READ',  calls:0},
+  {repo:'ProductRepository', method:'findByArchivedTrue()', sig:'findByArchivedTrue()',               op:'READ',  calls:0},
+];
+
+const s = ms => new Promise(r => setTimeout(r, ms));
+const tbody = document.getElementById('tbody');
+
+function opCell(op) {
+  return op === 'READ'
+    ? '<span class="bg bg-read">READ</span>'
+    : '<span class="bg bg-write">WRITE</span>';
+}
+function callsCell(n) {
+  const [cls, dc] = n === 0 ? ['cp-r','cp-rd'] : n <= 2 ? ['cp-a','cp-ad'] : ['cp-t','cp-td'];
+  return `<span class="cp ${cls}"><span class="${dc}"></span>${n}</span>`;
+}
+
+function buildRows() {
+  tbody.innerHTML = '';
+  DATA.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.dataset.repo = d.repo; tr.dataset.calls = d.calls;
+    tr.innerHTML =
+      `<td><span class="bg bg-gold">${d.repo}</span></td>`
+    + `<td><span class="bg bg-indigo">${d.method}</span></td>`
+    + `<td><span class="bg bg-muted">${d.sig}</span></td>`
+    + `<td>${opCell(d.op)}</td>`
+    + `<td>${callsCell(d.calls)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+const rows = () => [...tbody.querySelectorAll('tr')];
+function showAll() { rows().forEach(r => r.classList.remove('gone')); }
+
+function animateNum(id, target) {
+  const el = document.getElementById(id);
+  let cur = 0;
+  const iv = setInterval(() => {
+    cur = Math.min(cur + Math.ceil(target / 22), target);
+    el.textContent = cur;
+    if (cur >= target) clearInterval(iv);
+  }, 28);
+}
+
+function animateHealth(score) {
+  const circ = 2 * Math.PI * 13;
+  const arc = document.getElementById('arc');
+  const txt = document.getElementById('arcTxt');
+  let cur = 0; const target = (score / 100) * circ;
+  const iv = setInterval(() => {
+    cur = Math.min(cur + target / 30, target);
+    arc.setAttribute('stroke-dasharray', cur.toFixed(1) + ' ' + circ.toFixed(1));
+    txt.textContent = Math.round((cur / circ) * 100) + '%';
+    if (cur >= target) clearInterval(iv);
+  }, 22);
+}
+
+function updateStatus() {
+  const vis = rows().filter(r => !r.classList.contains('gone')).length;
+  document.getElementById('stTotal').textContent = vis + ' method' + (vis === 1 ? '' : 's');
+}
+
+async function phaseLoad() {
+  rows().forEach((r, i) => setTimeout(() => r.classList.add('in'), 80 + i * 170));
+  await s(80 + (DATA.length - 1) * 170 + 300);
+}
+
+async function typeText(q) {
+  const c = document.getElementById('cur'); c.style.display = 'inline-block';
+  const el = document.getElementById('srch');
+  for (let i = 0; i <= q.length; i++) {
+    el.value = q.slice(0, i);
+    const lo = q.slice(0, i).toLowerCase();
+    rows().forEach(r => r.classList.toggle('gone', lo ? !r.textContent.toLowerCase().includes(lo) : false));
+    updateStatus();
+    await s(72);
+  }
+  c.style.display = 'none';
+}
+
+async function eraseText() {
+  const el = document.getElementById('srch');
+  let v = el.value;
+  for (let i = v.length; i >= 0; i--) {
+    el.value = v.slice(0, i);
+    const lo = v.slice(0, i).toLowerCase();
+    rows().forEach(r => r.classList.toggle('gone', lo ? !r.textContent.toLowerCase().includes(lo) : false));
+    if (!lo) updateStatus();
+    await s(30);
+  }
+}
+
+async function loop() {
+  buildRows(); showAll();
+  rows().forEach(r => { r.classList.remove('in'); r.style.transition = 'none'; });
+  ['nm','nu','nr'].forEach(id => document.getElementById(id).textContent = '0');
+  document.getElementById('arc').setAttribute('stroke-dasharray', '0 81.7');
+  document.getElementById('arcTxt').textContent = '0%';
+  document.getElementById('srch').value = '';
+  document.getElementById('unusedTog').classList.remove('on');
+  document.getElementById('cfTog').classList.remove('on');
+  updateStatus();
+  await s(700);
+
+  rows().forEach((r, i) => r.style.transition = `opacity .2s ${i*0.065}s ease,transform .2s ${i*0.065}s ease`);
+  animateNum('nm', 8); animateNum('nu', 2); animateNum('nr', 3);
+  animateHealth(75);
+  document.getElementById('stTotal').textContent = '8 methods';
+  await phaseLoad();
+  await s(1200);
+
+  await typeText('OrderR');
+  await s(1500);
+  await eraseText();
+  await s(500);
+
+  document.getElementById('unusedTog').classList.add('on');
+  rows().forEach(r => r.classList.toggle('gone', parseInt(r.dataset.calls) !== 0));
+  updateStatus();
+  await s(2000);
+  document.getElementById('unusedTog').classList.remove('on');
+  showAll(); updateStatus();
+  await s(600);
+
+  loop();
+}
+loop();
+</script>
+</body></html>

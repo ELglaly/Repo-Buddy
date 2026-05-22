@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=gradle)
-![Version](https://img.shields.io/badge/version-1.0.5-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.6-blue?style=for-the-badge)
 ![IntelliJ](https://img.shields.io/badge/IntelliJ-2023.2%2B-orange?style=for-the-badge&logo=intellij-idea)
 ![Java](https://img.shields.io/badge/Java-17%2B-red?style=for-the-badge&logo=openjdk)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.7%2B-6DB33F?style=for-the-badge&logo=springboot)
