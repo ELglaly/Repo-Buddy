@@ -1,0 +1,284 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<style>
+:root{
+  --bg:#1e1f22;--panel:#2b2d30;--panel2:#26282b;--toolbar:#313438;
+  --ink:#dfe1e5;--ink2:#c2c5ca;--ink-dim:#9ba0a8;
+  --border:#1e1f22;--border-sub:#393b40;
+  --indigo:#9b94f5;--indigo-sub:#252346;
+  --teal:#45b5aa;--teal-sub:#0d2e2c;
+  --rose:#fb7185;--rose-sub:#3d0018;
+  --amber:#e3b341;--amber-sub:#3d2f0f;
+  --violet:#8b5cf6;--violet-sub:#2e1065;
+  --hover:#393b40;--selection:#2e436e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;color:var(--ink)}
+.root{height:100%;display:flex;flex-direction:column}
+.tb{background:var(--panel);height:22px;display:flex;align-items:center;padding:0 10px;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.dot{width:9px;height:9px;border-radius:50%}.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+
+/* GradientHeader — matches RepoIssuesPanel.buildHeader() */
+.hdr{background:linear-gradient(135deg,#1E1B4B 0%,#1C1333 100%);border-bottom:1px solid #312E81;
+  padding:5px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;height:52px}
+.hdr-icon{font-size:15px;flex-shrink:0}
+.hdr-col{flex:1}
+.hdr-title{font-size:12px;font-weight:700;color:#E0E7FF;line-height:1.3}
+.hdr-sub{font-size:9px;color:#818CF8;line-height:1.2}
+.stat-cards{display:flex;gap:5px;flex-shrink:0}
+.sc{border-radius:8px;padding:3px 9px;text-align:center;min-width:48px}
+.sc-i{background:var(--indigo-sub)}.sc-t{background:var(--teal-sub)}
+.sc-n{font-size:14px;font-weight:700;line-height:1.2}
+.sc-ni{color:var(--indigo)}.sc-nt{color:var(--teal)}
+.sc-l{font-size:8px;color:var(--ink-dim);line-height:1.2}
+
+/* Toolbar — matches buildCenter toolbar */
+.bar{background:var(--toolbar);border-bottom:1px solid var(--border-sub);display:flex;align-items:center;
+  gap:4px;padding:3px 8px;height:28px;flex-shrink:0}
+.srch{display:flex;align-items:center;gap:3px;border:1px solid var(--border-sub);border-radius:4px;
+  padding:1px 6px;background:var(--panel);flex:1;max-width:200px;height:20px}
+.si{font-size:9px;color:var(--ink-dim);flex-shrink:0}
+.st{background:transparent;border:none;outline:none;font-size:10px;color:var(--ink);width:100%;font-family:inherit}
+.st::placeholder{color:var(--ink-dim)}
+.cur{display:none;width:1px;height:9px;background:var(--indigo);animation:blink .8s step-start infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.sep{width:1px;height:13px;background:var(--border-sub);flex-shrink:0}
+.tog{font-size:9.5px;padding:1px 6px;border:1px solid var(--border-sub);border-radius:3px;
+  background:var(--panel);color:var(--ink);font-family:inherit;height:20px;white-space:nowrap}
+.tog.on{background:var(--indigo-sub);color:var(--indigo);border-color:var(--indigo)}
+.ibtn{width:20px;height:20px;display:flex;align-items:center;justify-content:center;
+  background:transparent;border:none;color:var(--ink-dim);border-radius:3px;font-size:12px}
+.f1{flex:1}
+
+/* Table — matches JBTable with 4 columns: Inspection · File · Line · Message */
+.tw{flex:1;overflow:auto;background:var(--panel)}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead th{background:var(--toolbar);color:var(--ink-dim);font-weight:600;text-align:left;
+  padding:3px 6px;border-bottom:1px solid var(--border-sub);position:sticky;top:0;z-index:2;
+  white-space:nowrap;font-size:9.5px}
+.c-insp{width:128px}.c-file{width:108px}.c-line{width:40px}.c-msg{min-width:80px}
+tbody tr{background:var(--panel);cursor:pointer;opacity:0;transform:translateY(3px);
+  transition:opacity .2s ease,transform .2s ease}
+tbody tr.in{opacity:1;transform:none}
+tbody tr.gone{display:none}
+tbody tr:hover{background:var(--hover)}
+td{padding:3px 6px;vertical-align:middle;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+td.c-msg{font-size:9.5px;color:var(--ink2)}
+
+/* InspectionBadgeRenderer — color-coded per inspection type */
+.ibg{display:inline-block;border-radius:10px;padding:1px 7px;font-size:9px;font-weight:700;white-space:nowrap}
+.ibg-rose{background:var(--rose-sub);color:var(--rose)}
+.ibg-amber{background:var(--amber-sub);color:var(--amber)}
+.ibg-violet{background:var(--violet-sub);color:var(--violet)}
+.ibg-indigo{background:var(--indigo-sub);color:var(--indigo)}
+.ibg-teal{background:var(--teal-sub);color:var(--teal)}
+
+/* FileBadgeRenderer — muted rounded badge */
+.fbg{display:inline-block;background:var(--panel2);color:var(--ink-dim);border-radius:10px;
+  padding:1px 7px;font-size:9px;white-space:nowrap}
+
+/* LinePillRenderer — small centred muted pill */
+.lpill{display:inline-block;background:var(--border-sub);color:var(--ink-dim);border-radius:9px;
+  padding:1px 6px;font-size:9px;font-weight:700;font-family:'JetBrains Mono',Consolas,monospace}
+
+/* Summary bar — per-inspection count pills + scope label */
+.sumbar{background:var(--toolbar);border-top:1px solid var(--border-sub);display:flex;align-items:center;
+  gap:3px;padding:2px 8px;height:20px;flex-shrink:0;overflow:hidden}
+.smpill{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700}
+.sp-def{background:var(--panel2);color:var(--ink-dim)}
+.sp-rose{background:var(--rose-sub);color:var(--rose)}
+.sp-amber{background:var(--amber-sub);color:var(--amber)}
+.sp-violet{background:var(--violet-sub);color:var(--violet)}
+.sp-indigo{background:var(--indigo-sub);color:var(--indigo)}
+.sp-teal{background:var(--teal-sub);color:var(--teal)}
+</style></head><body>
+<div class="root">
+  <div class="tb">
+    <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+  </div>
+
+  <!-- GradientHeader: ⚠ Issues + stat cards (Issues · Files) -->
+  <div class="hdr">
+    <span class="hdr-icon">⚠</span>
+    <div class="hdr-col">
+      <div class="hdr-title">Issues</div>
+      <div class="hdr-sub">RepoBuddy inspection findings</div>
+    </div>
+    <div class="stat-cards">
+      <div class="sc sc-i"><div class="sc-n sc-ni" id="nIssues">0</div><div class="sc-l">Issues</div></div>
+      <div class="sc sc-t"><div class="sc-n sc-nt" id="nFiles">0</div><div class="sc-l">Files</div></div>
+    </div>
+  </div>
+
+  <!-- Toolbar: search · | · Current file · ↧ · ↻ -->
+  <div class="bar">
+    <div class="srch">
+      <span class="si">🔍</span>
+      <input class="st" id="srch" placeholder="Search inspection, file or message…" readonly/>
+      <span class="cur" id="cur"></span>
+    </div>
+    <div class="sep"></div>
+    <button class="tog" id="cfTog">Current file</button>
+    <div class="f1"></div>
+    <span class="ibtn">↧</span><span class="ibtn">↻</span>
+  </div>
+
+  <!-- JBTable: Inspection · File · Line · Message -->
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th class="c-insp">Inspection</th>
+        <th class="c-file">File</th>
+        <th class="c-line">Line</th>
+        <th class="c-msg">Message</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Summary bar: total pill + per-inspection pills + scope -->
+  <div class="sumbar">
+    <span class="smpill sp-def" id="stTotal">0 issues</span>
+    <span id="pills"></span>
+    <div class="f1"></div>
+    <span style="font-size:9px;color:var(--ink-dim)" id="stScope">project</span>
+  </div>
+</div>
+<script>
+const ALL_DATA = [
+  {insp:'Unsafe @Query',                  cls:'ibg-rose',   file:'UserRepository',    line:12, msg:'Named parameter :name is missing @Param annotation'},
+  {insp:'N+1 query',                      cls:'ibg-indigo', file:'OrderService',       line:34, msg:'Lazy collection iterated in loop — use JOIN FETCH or @EntityGraph'},
+  {insp:'Missing @Transactional',         cls:'ibg-violet', file:'UserService',        line:58, msg:'write method save() called without @Transactional context'},
+  {insp:'Missing @Transactional',         cls:'ibg-violet', file:'UserService',        line:74, msg:'delete() called without @Transactional context'},
+  {insp:'Missing pagination',             cls:'ibg-amber',  file:'ProductRepository',  line:21, msg:'findAll() returns unbounded List — add Pageable parameter'},
+  {insp:'Missing @Transactional',         cls:'ibg-violet', file:'OrderService',       line:92, msg:'update() called without @Transactional context'},
+  {insp:'@Transactional self-invocation', cls:'ibg-teal',   file:'PaymentService',     line:45, msg:'Self-invocation bypasses Spring proxy — @Tx has no effect'},
+];
+
+const PILL_DEFS = [
+  {label:'@Query',    cls:'sp-rose',   key:'Unsafe @Query'},
+  {label:'Pagination',cls:'sp-amber',  key:'Missing pagination'},
+  {label:'@Tx',       cls:'sp-violet', key:'Missing @Transactional'},
+  {label:'N+1',       cls:'sp-indigo', key:'N+1 query'},
+  {label:'Self-inv',  cls:'sp-teal',   key:'@Transactional self-invocation'},
+];
+
+const s = ms => new Promise(r => setTimeout(r, ms));
+const tbody = document.getElementById('tbody');
+
+function buildRows(data) {
+  tbody.innerHTML = '';
+  data.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.dataset.insp = d.insp; tr.dataset.file = d.file;
+    tr.innerHTML =
+      `<td><span class="ibg ${d.cls}">${d.insp}</span></td>`
+    + `<td><span class="fbg">${d.file}</span></td>`
+    + `<td><span class="lpill">${d.line}</span></td>`
+    + `<td class="c-msg">${d.msg}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+const rows = () => [...tbody.querySelectorAll('tr')];
+
+function rebuildPills(data) {
+  const pills = document.getElementById('pills');
+  pills.innerHTML = '';
+  PILL_DEFS.forEach(pd => {
+    const cnt = data.filter(d => d.insp === pd.key).length;
+    if (!cnt) return;
+    pills.innerHTML +=
+      `<span class="smpill ${pd.cls}" style="margin-left:3px">${pd.label}&nbsp;&nbsp;${cnt}</span>`;
+  });
+}
+
+function updateStatus(data, scope) {
+  document.getElementById('stTotal').textContent = data.length + ' issue' + (data.length === 1 ? '' : 's');
+  document.getElementById('stScope').textContent = scope;
+  rebuildPills(data);
+}
+
+function animateNum(id, target) {
+  const el = document.getElementById(id);
+  let cur = 0;
+  const iv = setInterval(() => {
+    cur = Math.min(cur + Math.ceil(target / 20), target);
+    el.textContent = cur;
+    if (cur >= target) clearInterval(iv);
+  }, 28);
+}
+
+async function phaseLoad() {
+  rows().forEach((r, i) => setTimeout(() => r.classList.add('in'), 80 + i * 180));
+  await s(80 + (ALL_DATA.length - 1) * 180 + 300);
+}
+
+async function typeText(q) {
+  const c = document.getElementById('cur'); c.style.display = 'inline-block';
+  const el = document.getElementById('srch');
+  for (let i = 0; i <= q.length; i++) {
+    el.value = q.slice(0, i);
+    const lo = q.slice(0, i).toLowerCase();
+    rows().forEach(r => r.classList.toggle('gone',
+      lo ? !r.textContent.toLowerCase().includes(lo) : false));
+    await s(70);
+  }
+  c.style.display = 'none';
+}
+
+async function eraseText() {
+  const el = document.getElementById('srch');
+  let v = el.value;
+  for (let i = v.length; i >= 0; i--) {
+    el.value = v.slice(0, i);
+    const lo = v.slice(0, i).toLowerCase();
+    rows().forEach(r => r.classList.toggle('gone',
+      lo ? !r.textContent.toLowerCase().includes(lo) : false));
+    await s(30);
+  }
+}
+
+async function loop() {
+  buildRows(ALL_DATA);
+  rows().forEach(r => { r.classList.remove('in'); r.style.transition = 'none'; });
+  document.getElementById('srch').value = '';
+  document.getElementById('cfTog').classList.remove('on');
+  document.getElementById('nIssues').textContent = '0';
+  document.getElementById('nFiles').textContent = '0';
+  updateStatus(ALL_DATA, 'project');
+  await s(700);
+
+  rows().forEach((r, i) =>
+    r.style.transition = `opacity .2s ${i*0.07}s ease,transform .2s ${i*0.07}s ease`);
+  animateNum('nIssues', 7); animateNum('nFiles', 4);
+  await phaseLoad();
+  await s(1200);
+
+  // Search "transactional"
+  await typeText('Transactional');
+  const filtered = ALL_DATA.filter(d =>
+    d.insp.toLowerCase().includes('transactional') ||
+    d.file.toLowerCase().includes('transactional') ||
+    d.msg.toLowerCase().includes('transactional'));
+  updateStatus(filtered, 'project · showing ' + filtered.length);
+  await s(1800);
+  await eraseText();
+  updateStatus(ALL_DATA, 'project');
+  await s(500);
+
+  // Current file → UserService rows only
+  document.getElementById('cfTog').classList.add('on');
+  rows().forEach(r => r.classList.toggle('gone', r.dataset.file !== 'UserService'));
+  const cf = ALL_DATA.filter(d => d.file === 'UserService');
+  updateStatus(cf, 'current file');
+  await s(2200);
+  document.getElementById('cfTog').classList.remove('on');
+  rows().forEach(r => r.classList.remove('gone'));
+  updateStatus(ALL_DATA, 'project');
+  await s(600);
+
+  loop();
+}
+loop();
+</script>
+</body></html>

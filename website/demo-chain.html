@@ -1,0 +1,286 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<style>
+:root{
+  --bg:#1e1f22;--panel:#2b2d30;--panel2:#26282b;--toolbar:#313438;
+  --ink:#dfe1e5;--ink2:#c2c5ca;--ink-dim:#9ba0a8;
+  --border:#1e1f22;--border-sub:#393b40;
+  --indigo:#9b94f5;--indigo-sub:#252346;
+  --teal:#45b5aa;--teal-sub:#0d2e2c;
+  --amber:#e3b341;--amber-sub:#3d2f0f;
+  --violet:#8b5cf6;--violet-sub:#2e1065;
+  --rose:#fb7185;--rose-sub:#3d0018;
+  --success:#5fb865;--success-sub:#1f3a22;
+  --warning:#e3b341;--hover:#393b40;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;color:var(--ink)}
+.root{height:100%;display:flex;flex-direction:column}
+.tb{background:var(--panel);height:22px;display:flex;align-items:center;padding:0 10px;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.dot{width:9px;height:9px;border-radius:50%}.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+
+/* GradientHeader */
+.hdr{background:linear-gradient(135deg,#1E1B4B 0%,#1C1333 100%);border-bottom:1px solid #312E81;
+  padding:5px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;height:52px}
+.hdr-icon{font-size:15px;flex-shrink:0}
+.hdr-col{flex:1}
+.hdr-title{font-size:12px;font-weight:700;color:#E0E7FF;line-height:1.3}
+.hdr-sub{font-size:9px;color:#818CF8;line-height:1.2}
+.stat-cards{display:flex;gap:5px;flex-shrink:0}
+.sc{border-radius:8px;padding:3px 9px;text-align:center;min-width:52px}
+.sc-i{background:var(--indigo-sub)}.sc-t{background:var(--teal-sub)}.sc-v{background:var(--violet-sub)}
+.sc-n{font-size:14px;font-weight:700;line-height:1.2}
+.sc-ni{color:var(--indigo)}.sc-nt{color:var(--teal)}.sc-nv{color:var(--violet)}
+.sc-l{font-size:8px;color:var(--ink-dim);line-height:1.2}
+/* Pulsing dot (PulsingDot) */
+.pulse-wrap{flex-shrink:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+.pulse-dot{width:10px;height:10px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 0 rgba(69,181,170,.5);animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(69,181,170,.45)}70%{box-shadow:0 0 0 8px rgba(69,181,170,0)}100%{box-shadow:0 0 0 0 rgba(69,181,170,0)}}
+
+/* Primary toolbar: filter + combo + Trace + icons */
+.bar1{background:var(--toolbar);border-bottom:1px solid var(--border-sub);display:flex;align-items:center;
+  gap:4px;padding:3px 8px;height:28px;flex-shrink:0}
+.filter-wrap{display:flex;align-items:center;gap:3px;border:1px solid var(--border-sub);border-radius:4px;
+  padding:1px 6px;background:var(--panel);width:86px;height:20px}
+.fi{background:transparent;border:none;outline:none;font-size:10px;color:var(--ink);width:100%;font-family:inherit}
+.fi::placeholder{color:var(--ink-dim)}
+.combo{background:var(--panel);border:1px solid var(--border-sub);border-radius:4px;height:20px;
+  display:flex;align-items:center;gap:4px;padding:0 6px;flex:1;overflow:hidden}
+.combo-badge{background:var(--indigo-sub);color:var(--indigo);padding:1px 5px;border-radius:3px;
+  font-size:9px;font-weight:700;flex-shrink:0}
+.combo-path{font-size:10px;font-family:'JetBrains Mono',Consolas,monospace;color:var(--ink2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.combo-arrow{font-size:9px;color:var(--ink-dim);flex-shrink:0}
+.trace-btn{background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border:none;
+  border-radius:4px;padding:2px 10px;font-size:10px;font-weight:700;font-family:inherit;
+  height:20px;cursor:pointer;flex-shrink:0;transition:filter .15s}
+.trace-btn.flash{filter:brightness(1.4)}
+.ibtn{width:20px;height:20px;display:flex;align-items:center;justify-content:center;
+  background:transparent;border:none;color:var(--ink-dim);border-radius:3px;font-size:12px}
+
+/* Secondary toolbar: Expand/Collapse segmented · | · Repos only · (right) Clear cache */
+.bar2{background:var(--toolbar);border-bottom:1px solid var(--border-sub);display:flex;align-items:center;
+  gap:4px;padding:2px 8px;height:24px;flex-shrink:0}
+.seg{display:flex;border:1px solid var(--border-sub);border-radius:3px;overflow:hidden;flex-shrink:0}
+.seg-btn{background:var(--panel);color:var(--ink-dim);border:none;font-size:9px;font-family:inherit;
+  padding:1px 7px;height:18px;cursor:pointer;white-space:nowrap}
+.seg-btn:first-child{border-right:1px solid var(--border-sub)}
+.sep{width:1px;height:12px;background:var(--border-sub);flex-shrink:0}
+.tog{font-size:9.5px;padding:1px 6px;border:1px solid var(--border-sub);border-radius:3px;
+  background:var(--panel);color:var(--ink);font-family:inherit;height:18px;white-space:nowrap}
+.tog.on{background:var(--indigo-sub);color:var(--indigo);border-color:var(--indigo)}
+.f1{flex:1}
+.clr-btn{background:transparent;border:1px solid var(--border-sub);border-radius:3px;color:var(--warning);
+  font-size:9px;font-family:inherit;padding:1px 6px;height:18px;cursor:pointer;white-space:nowrap}
+
+/* Status label */
+.status{padding:2px 10px 3px;font-size:9.5px;flex-shrink:0;border-bottom:1px solid var(--border-sub);
+  background:var(--toolbar)}
+.st-idle{color:var(--ink-dim)}.st-ok{color:var(--success)}.st-tracing{color:var(--indigo)}
+
+/* Tree */
+.tree{flex:1;overflow:hidden;background:var(--panel);padding:4px 0}
+.node{display:flex;align-items:center;gap:4px;padding:3px 8px;height:24px;cursor:pointer;
+  opacity:0;transform:translateX(-8px);transition:opacity .22s ease,transform .22s ease}
+.node.in{opacity:1;transform:none}
+.node:hover{background:var(--hover)}
+.nc{font-family:'JetBrains Mono',Consolas,monospace;font-size:11px;color:#4e5157;width:14px;flex-shrink:0}
+.nname{font-size:10px;font-family:'JetBrains Mono',Consolas,monospace;color:var(--ink2);flex:1;white-space:nowrap}
+.badge{display:inline-block;padding:1px 5px;border-radius:4px;font-size:8.5px;font-weight:700;flex-shrink:0}
+.b-post{background:var(--indigo-sub);color:var(--indigo)}
+.b-tx{background:var(--violet-sub);color:var(--violet)}
+.b-svc{background:var(--panel2);color:var(--ink-dim)}
+.b-read{background:var(--teal-sub);color:var(--teal)}
+.b-write{background:var(--rose-sub);color:var(--rose)}
+
+/* Summary bar: READ · WRITE · @Tx pills + entity pills */
+.sumbar{background:var(--toolbar);border-top:1px solid var(--border-sub);display:flex;align-items:center;
+  gap:4px;padding:3px 8px;height:22px;flex-shrink:0;overflow:hidden}
+.smpill{display:inline-block;padding:1px 7px;border-radius:4px;font-size:9px;font-weight:700}
+.sp-read{background:var(--teal-sub);color:var(--teal)}
+.sp-write{background:var(--rose-sub);color:var(--rose)}
+.sp-tx{background:var(--violet-sub);color:var(--violet)}
+.sp-entity{background:var(--indigo-sub);color:var(--indigo);font-family:'JetBrains Mono',Consolas,monospace;
+  font-size:8.5px;border-radius:8px}
+.sep-sm{color:var(--ink-dim);font-size:9px}
+</style></head><body>
+<div class="root">
+  <div class="tb">
+    <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+  </div>
+
+  <!-- GradientHeader: 🔗 title + 3 stat cards + PulsingDot -->
+  <div class="hdr">
+    <span class="hdr-icon">🔗</span>
+    <div class="hdr-col">
+      <div class="hdr-title">Call Chain Tracer</div>
+      <div class="hdr-sub">Endpoint → Repository analysis</div>
+    </div>
+    <div class="stat-cards">
+      <div class="sc sc-i"><div class="sc-n sc-ni" id="ne">5</div><div class="sc-l">Endpoints</div></div>
+      <div class="sc sc-t"><div class="sc-n sc-nt" id="nr">0</div><div class="sc-l">Repos Hit</div></div>
+      <div class="sc sc-v"><div class="sc-n sc-nv" id="nt">0</div><div class="sc-l">@Tx Nodes</div></div>
+    </div>
+    <div class="pulse-wrap"><div class="pulse-dot"></div></div>
+  </div>
+
+  <!-- Primary toolbar: filter · combo · Trace · ↻ · ⎘ -->
+  <div class="bar1">
+    <div class="filter-wrap">
+      <span style="font-size:9px;color:var(--ink-dim)">▼</span>
+      <input class="fi" placeholder="Filter endpoints…" readonly/>
+    </div>
+    <div class="combo" id="combo">
+      <span class="combo-badge" id="httpBadge">POST</span>
+      <span class="combo-path" id="comboPath">/api/orders/checkout</span>
+      <span class="combo-arrow">▾</span>
+    </div>
+    <button class="trace-btn" id="traceBtn">Trace</button>
+    <span class="ibtn">↻</span><span class="ibtn">⎘</span>
+  </div>
+
+  <!-- Secondary toolbar: Expand/Collapse · | · Repos only · Clear cache -->
+  <div class="bar2">
+    <div class="seg">
+      <button class="seg-btn">⊞ Expand</button>
+      <button class="seg-btn">⊟ Collapse</button>
+    </div>
+    <div class="sep"></div>
+    <button class="tog" id="reposOnly">🗄 Repos only</button>
+    <div class="f1"></div>
+    <button class="clr-btn">✕ Clear cache</button>
+  </div>
+
+  <!-- Status label -->
+  <div class="status"><span id="statusTxt" class="st-idle">Select an endpoint and click Trace.</span></div>
+
+  <!-- Call chain tree -->
+  <div class="tree" id="tree">
+    <div class="node" id="n0">
+      <span style="width:0"></span><span class="nc">▼</span>
+      <span style="font-size:12px">🌐</span>
+      <span class="nname">/api/orders/checkout</span>
+      <span class="badge b-post">POST</span>
+    </div>
+    <div class="node" id="n1">
+      <span style="width:14px"></span><span class="nc">├─</span>
+      <span style="font-size:12px">⚙</span>
+      <span class="nname">OrderService.checkout()</span>
+      <span class="badge b-tx">@Tx</span>
+      <span class="badge b-svc" style="margin-left:2px">SVC</span>
+    </div>
+    <div class="node" id="n2">
+      <span style="width:28px"></span><span class="nc">├─</span>
+      <span style="font-size:12px">🗄</span>
+      <span class="nname">inventoryRepo.findByProductIds()</span>
+      <span class="badge b-read">READ</span>
+    </div>
+    <div class="node" id="n3">
+      <span style="width:28px"></span><span class="nc">├─</span>
+      <span style="font-size:12px">🗄</span>
+      <span class="nname">orderRepo.save(order)</span>
+      <span class="badge b-write">WRITE</span>
+      <span class="badge b-tx" style="margin-left:2px">@Tx</span>
+    </div>
+    <div class="node" id="n4">
+      <span style="width:28px"></span><span class="nc">├─</span>
+      <span style="font-size:12px">🗄</span>
+      <span class="nname">paymentRepo.save(payment)</span>
+      <span class="badge b-write">WRITE</span>
+      <span class="badge b-tx" style="margin-left:2px">@Tx</span>
+    </div>
+    <div class="node" id="n5">
+      <span style="width:28px"></span><span class="nc">└─</span>
+      <span style="font-size:12px">⚙</span>
+      <span class="nname">emailService.sendConfirmation()</span>
+      <span class="badge b-svc">SVC</span>
+    </div>
+    <div class="node" id="n6">
+      <span style="width:42px"></span><span class="nc">└─</span>
+      <span style="font-size:12px">🗄</span>
+      <span class="nname">userRepo.findById(userId)</span>
+      <span class="badge b-read">READ</span>
+    </div>
+  </div>
+
+  <!-- Summary bar: READ · WRITE · @Tx · entity pills -->
+  <div class="sumbar">
+    <span class="smpill sp-read" id="pRead">2 READ</span>
+    <span class="smpill sp-write" id="pWrite">2 WRITE</span>
+    <span class="smpill sp-tx" id="pTx">1 @Tx</span>
+    <div class="f1"></div>
+    <span style="font-size:9px;color:var(--ink-dim)">Entities</span>
+    <span class="smpill sp-entity" id="e1" style="opacity:0">Inventory</span>
+    <span class="smpill sp-entity" id="e2" style="opacity:0">Order</span>
+    <span class="smpill sp-entity" id="e3" style="opacity:0">Payment</span>
+  </div>
+</div>
+<script>
+const s = ms => new Promise(r => setTimeout(r, ms));
+const NODES = ['n0','n1','n2','n3','n4','n5','n6'];
+
+function hideNodes() { NODES.forEach(id => document.getElementById(id).classList.remove('in')); }
+
+function animateNum(id, target) {
+  const el = document.getElementById(id);
+  let cur = parseInt(el.textContent) || 0;
+  if (cur === target) return;
+  const step = Math.ceil(Math.abs(target - cur) / 18);
+  const dir = target > cur ? 1 : -1;
+  const iv = setInterval(() => {
+    cur = cur + dir * step;
+    if ((dir > 0 && cur >= target) || (dir < 0 && cur <= target)) { cur = target; clearInterval(iv); }
+    el.textContent = cur;
+  }, 30);
+}
+
+async function loop() {
+  hideNodes();
+  document.getElementById('statusTxt').className = 'st-idle';
+  document.getElementById('statusTxt').textContent = 'Select an endpoint and click Trace.';
+  document.getElementById('reposOnly').classList.remove('on');
+  ['e1','e2','e3'].forEach(id => document.getElementById(id).style.opacity = '0');
+  animateNum('nr', 0); animateNum('nt', 0);
+  await s(1000);
+
+  // Highlight trace button
+  document.getElementById('traceBtn').classList.add('flash');
+  document.getElementById('statusTxt').className = 'st-tracing';
+  document.getElementById('statusTxt').textContent = 'Analyzing call chain…';
+  await s(300);
+  document.getElementById('traceBtn').classList.remove('flash');
+  await s(350);
+
+  // Reveal nodes one by one
+  for (let i = 0; i < NODES.length; i++) {
+    await s(i === 0 ? 80 : 240);
+    document.getElementById(NODES[i]).classList.add('in');
+  }
+
+  document.getElementById('statusTxt').className = 'st-ok';
+  document.getElementById('statusTxt').textContent = 'Found 3 repository call(s) in chain.';
+  animateNum('nr', 3); animateNum('nt', 1);
+  // Fade in entity pills
+  ['e1','e2','e3'].forEach((id, i) => setTimeout(() => {
+    document.getElementById(id).style.opacity = '1';
+    document.getElementById(id).style.transition = 'opacity .3s';
+  }, 200 + i * 150));
+
+  await s(2800);
+
+  // Repos only toggle
+  document.getElementById('reposOnly').classList.add('on');
+  ['n1','n5'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.transition = 'opacity .3s';
+    el.style.opacity = '0.25';
+  });
+  await s(1800);
+  document.getElementById('reposOnly').classList.remove('on');
+  ['n1','n5'].forEach(id => document.getElementById(id).style.opacity = '1');
+  await s(600);
+
+  loop();
+}
+loop();
+</script>
+</body></html>

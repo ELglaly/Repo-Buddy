@@ -1,0 +1,149 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<style>
+:root{
+  --bg:#1e1f22;--panel:#2b2d30;--panel2:#26282b;--toolbar:#313438;
+  --ink:#dfe1e5;--ink2:#c2c5ca;--ink-dim:#9ba0a8;
+  --border:#1e1f22;--border-sub:#393b40;
+  --accent:#548af7;--accent-sub:#233558;
+  --success:#5fb865;--success-sub:#1f3a22;
+  --danger:#f36161;--danger-sub:#3d1a1a;
+  --indigo:#9b94f5;--indigo-sub:#252346;
+  --violet:#a78bfa;--violet-sub:#2e1065;
+  --hover:#393b40;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;color:var(--ink)}
+.root{height:100%;display:flex;flex-direction:column;position:relative}
+
+/* titlebar */
+.tb{background:var(--panel);height:22px;display:flex;align-items:center;padding:0 10px;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.dot{width:9px;height:9px;border-radius:50%}.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+.tt{flex:1;text-align:center;font-size:10px;color:var(--ink-dim)}
+
+/* editor */
+.ed{background:var(--bg);padding:4px 0;border-bottom:1px solid var(--border-sub);flex-shrink:0}
+.cl{display:flex;align-items:center;padding:0 6px;height:19px}
+.ln{color:#4e5157;width:24px;text-align:right;margin-right:12px;font-size:10px;flex-shrink:0;font-family:'JetBrains Mono',Consolas,monospace}
+.kw{color:#cc7832}.typ{color:#ffc66d}.fn{color:#ffc66d}.txt{color:#a9b7c6}
+.gut{display:inline-flex;align-items:center;justify-content:center;width:14px;margin-right:6px;font-size:12px;color:var(--accent);transition:all .15s;flex-shrink:0}
+.gut.pulse{animation:gp 1.8s ease-in-out infinite}
+.gut.click{transform:scale(1.5);color:#fff;filter:drop-shadow(0 0 4px #548af7)}
+@keyframes gp{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* popup */
+.ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);opacity:0;transition:opacity .25s;pointer-events:none;z-index:10}
+.ov.show{opacity:1;pointer-events:all}
+.pop{background:var(--panel);border-radius:7px;border:1px solid var(--border-sub);box-shadow:0 12px 40px rgba(0,0,0,.65);width:310px;overflow:hidden;transform:translateY(10px) scale(.97);transition:transform .28s ease,opacity .28s;opacity:0}
+.ov.show .pop{transform:none;opacity:1}
+.ph{background:var(--panel2);padding:7px 11px;display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--border-sub)}
+.ptit{font-size:11.5px;font-weight:700;flex:1;color:var(--ink)}
+.ab{display:flex;align-items:center;gap:3px;font-size:9.5px;color:var(--success);background:var(--success-sub);padding:2px 7px;border-radius:10px}
+.adot{width:5px;height:5px;border-radius:50%;background:var(--success);animation:gp 1.5s ease-in-out infinite}
+.pb{padding:9px 11px}
+.fr{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.fl{font-size:10px;color:var(--ink-dim);width:60px;flex-shrink:0}
+.ft{font-size:9px;padding:1px 5px;border-radius:5px;background:var(--accent-sub);color:var(--accent);font-weight:700;width:52px;text-align:center;flex-shrink:0}
+.fi{flex:1;background:var(--bg);border:1px solid var(--border-sub);border-radius:3px;padding:2px 6px;color:var(--ink);font-size:10px;font-family:'JetBrains Mono',Consolas,monospace;height:20px;outline:none;transition:border-color .15s}
+.fi.focus{border-color:var(--accent)}
+.pa{display:flex;align-items:center;gap:6px;padding:7px 11px;border-top:1px solid var(--border-sub)}
+.brun{background:var(--accent);color:#fff;border:none;border-radius:3px;padding:4px 13px;font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:filter .15s}
+.bgen{background:transparent;color:var(--ink-dim);border:1px solid var(--border-sub);border-radius:3px;padding:4px 9px;font-size:10px;cursor:pointer;font-family:inherit}
+
+/* result */
+.rp{display:none;padding:8px 11px;border-top:1px solid var(--border-sub)}
+.rp.show{display:block}
+.rh{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.tbadge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700}
+.tg{background:var(--success-sub);color:var(--success)}
+.sbadge{background:var(--accent-sub);color:var(--accent);padding:2px 7px;border-radius:10px;font-size:10px}
+.jo{background:var(--panel2);border-radius:4px;padding:5px 8px;font-family:'JetBrains Mono',Consolas,monospace;font-size:10px;color:#a9b7c6;line-height:1.6}
+.jk{color:#9b94f5}.js{color:#6aaf50}.jn{color:#6897bb}
+
+/* status bar */
+.sb{background:#3c3f41;height:18px;display:flex;align-items:center;padding:0 8px;gap:8px;border-top:1px solid var(--border);flex-shrink:0}
+.si{font-size:9px;color:var(--ink-dim)}
+.sbg{background:var(--success-sub);color:var(--success);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700}
+</style></head><body>
+<div class="root">
+  <div class="tb">
+    <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+    <span class="tt">UserRepository.java</span>
+  </div>
+  <div class="ed">
+    <div class="cl"><span class="ln">12</span><span class="kw">public interface </span><span class="typ">UserRepository </span><span class="txt">extends JpaRepository&lt;User,Long&gt; {</span></div>
+    <div class="cl"><span class="ln">13</span></div>
+    <div class="cl"><span class="ln">14</span><span class="gut pulse" id="g1">⌕</span><span class="fn">findByEmailAndStatus</span><span class="txt">(String email, UserStatus status);</span></div>
+    <div class="cl"><span class="ln">15</span></div>
+    <div class="cl"><span class="ln">16</span><span class="gut" id="g2">⌕</span><span class="fn">findAllByCreatedAtAfter</span><span class="txt">(LocalDate date, Pageable p);</span></div>
+    <div class="cl"><span class="ln">17</span><span class="txt">}</span></div>
+  </div>
+  <div style="flex:1;background:var(--bg)"></div>
+  <div class="sb">
+    <span class="si">Java</span>
+    <span class="si" style="margin-left:auto">RepoBuddy <span class="sbg">● Agent Ready</span></span>
+  </div>
+
+  <div class="ov" id="ov">
+    <div class="pop">
+      <div class="ph">
+        <span class="ptit">findByEmailAndStatus</span>
+        <span class="ab"><span class="adot"></span>Agent Ready</span>
+      </div>
+      <div class="pb">
+        <div class="fr">
+          <span class="fl">email</span>
+          <span class="ft">String</span>
+          <input class="fi" id="fe" readonly placeholder="enter value…"/>
+        </div>
+        <div class="fr">
+          <span class="fl">status</span>
+          <span class="ft">UserStatus</span>
+          <input class="fi" id="fs" readonly placeholder="enter value…"/>
+        </div>
+      </div>
+      <div class="pa">
+        <button class="brun" id="brun">▶ Run</button>
+        <button class="bgen">🎲 Generate All</button>
+      </div>
+      <div class="rp" id="rp">
+        <div class="rh">
+          <span class="tbadge tg">✓ 23 ms</span>
+          <span class="sbadge">1 SQL</span>
+          <span style="font-size:10px;color:var(--ink-dim);margin-left:2px">3 rows</span>
+        </div>
+        <div class="jo">
+<span class="jk">"id"</span>:<span class="jn">1</span>, <span class="jk">"email"</span>:<span class="js">"alice@acme.com"</span>, <span class="jk">"status"</span>:<span class="js">"ACTIVE"</span><br>
+<span class="jk">"id"</span>:<span class="jn">2</span>, <span class="jk">"email"</span>:<span class="js">"bob@acme.com"</span>,&nbsp; <span class="jk">"status"</span>:<span class="js">"ACTIVE"</span><br>
+<span class="jk">"id"</span>:<span class="jn">3</span>, <span class="jk">"email"</span>:<span class="js">"carol@acme.com"</span>, <span class="jk">"status"</span>:<span class="js">"ACTIVE"</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const s = ms => new Promise(r => setTimeout(r, ms));
+async function type(el, text, spd=45) {
+  el.classList.add('focus');
+  for (let i = 0; i <= text.length; i++) { el.value = text.slice(0, i); await s(spd + Math.random()*25); }
+  el.classList.remove('focus');
+}
+async function loop() {
+  const ov=document.getElementById('ov'), rp=document.getElementById('rp');
+  const fe=document.getElementById('fe'), fs=document.getElementById('fs');
+  const g1=document.getElementById('g1'), brun=document.getElementById('brun');
+  ov.classList.remove('show'); rp.classList.remove('show');
+  fe.value=''; fs.value=''; g1.className='gut pulse';
+  await s(1800);
+  g1.className='gut click'; await s(320); g1.className='gut';
+  ov.classList.add('show'); await s(700);
+  await type(fe, 'alice@acme.com'); await s(180);
+  await type(fs, 'ACTIVE', 60); await s(550);
+  brun.style.filter='brightness(1.35)'; await s(180); brun.style.filter='';
+  await s(650);
+  rp.classList.add('show'); await s(3000);
+  ov.classList.remove('show'); await s(500);
+  loop();
+}
+loop();
+</script>
+</body></html>

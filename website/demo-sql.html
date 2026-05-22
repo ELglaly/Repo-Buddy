@@ -1,0 +1,115 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<style>
+:root{
+  --bg:#1e1f22;--panel:#2b2d30;--toolbar:#313438;
+  --ink:#dfe1e5;--ink2:#c2c5ca;--ink-dim:#6e7177;
+  --border:#1e1f22;--border-sub:#3a3c41;
+  --accent:#548af7;--kw:#cc7832;--str:#6aab73;--cm:#7a8696;
+  --fn:#ffc66d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:'JetBrains Mono',Consolas,'Courier New',monospace;font-size:11px;color:var(--ink)}
+.root{height:100%;display:flex;flex-direction:column}
+
+/* title bar */
+.tb{background:#3c3f41;height:22px;display:flex;align-items:center;padding:0 10px;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.dot{width:9px;height:9px;border-radius:50%}.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+.tt{flex:1;text-align:center;font-size:10px;color:var(--ink-dim);font-family:-apple-system,'Segoe UI',sans-serif}
+
+/* log area */
+.log{flex:1;overflow:hidden;background:var(--panel);padding:6px 0;position:relative}
+.log-inner{padding:0 12px}
+
+/* each SQL entry: comment line + sql block */
+.entry{
+  margin-bottom:10px;
+  opacity:0;transform:translateY(5px);
+  transition:opacity .25s ease,transform .25s ease;
+}
+.entry.in{opacity:1;transform:none}
+
+.cm-line{color:var(--cm);margin-bottom:2px;white-space:pre}
+.sql-block{
+  color:var(--ink2);
+  white-space:pre-wrap;
+  word-break:break-all;
+  line-height:1.55;
+  padding:3px 0 3px 10px;
+  border-left:2px solid var(--border-sub);
+}
+.kw{color:var(--kw);font-weight:600}
+.fn{color:var(--fn)}
+.str{color:var(--str)}
+
+/* status bar */
+.sb{background:#3c3f41;height:18px;display:flex;align-items:center;padding:0 10px;gap:10px;border-top:1px solid var(--border);flex-shrink:0;flex-wrap:nowrap}
+.si{font-size:9.5px;color:var(--ink-dim);font-family:-apple-system,'Segoe UI',sans-serif;white-space:nowrap}
+.sbadge{border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700;font-family:-apple-system,'Segoe UI',sans-serif}
+.sg{background:#1f3a22;color:#5fb865}
+.sr{background:#3d1a1a;color:#f36161}
+</style></head><body>
+<div class="root">
+  <div class="tb">
+    <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+    <span class="tt">RepoBuddy — SQL Capture</span>
+  </div>
+  <div class="log" id="log">
+    <div class="log-inner" id="inner"></div>
+  </div>
+  <div class="sb">
+    <span class="si" id="scount">0 queries</span>
+    <span class="si" style="margin-left:auto">Total: <span class="sbadge sg" id="sbadge">–</span></span>
+  </div>
+</div>
+<script>
+const s = ms => new Promise(r => setTimeout(r, ms));
+
+const QUERIES = [
+  {
+    ts: '18:18:25.502',
+    ms: 4,
+    sql: `<span class="kw">select</span> u1_0.id, u1_0.created_at, u1_0.date_of_birth, u1_0.email,\n       u1_0.first_name, u1_0.last_name, u1_0.role, u1_0.status\n  <span class="kw">from</span> users u1_0\n <span class="kw">where</span> <span class="fn">lower</span>(u1_0.first_name) <span class="kw">like</span> <span class="fn">lower</span>((<span class="str">'%'</span>||?||<span class="str">'%'</span>)) <span class="kw">escape</span> <span class="str">'\\'</span>\n    <span class="kw">or</span>  <span class="fn">lower</span>(u1_0.last_name)  <span class="kw">like</span> <span class="fn">lower</span>((<span class="str">'%'</span>||?||<span class="str">'%'</span>)) <span class="kw">escape</span> <span class="str">'\\'</span>\n    <span class="kw">or</span>  <span class="fn">lower</span>(u1_0.email)       <span class="kw">like</span> <span class="fn">lower</span>((<span class="str">'%'</span>||?||<span class="str">'%'</span>)) <span class="kw">escape</span> <span class="str">'\\'</span>\n <span class="kw">order by</span> u1_0.id\n <span class="kw">offset</span> ? <span class="kw">rows fetch first</span> ? <span class="kw">rows only</span>`
+  },
+  {
+    ts: '18:18:26.108',
+    ms: 2,
+    sql: `<span class="kw">select count</span>(*)\n  <span class="kw">from</span> users u1_0\n <span class="kw">where</span> <span class="fn">lower</span>(u1_0.first_name) <span class="kw">like</span> <span class="fn">lower</span>((<span class="str">'%'</span>||?||<span class="str">'%'</span>)) <span class="kw">escape</span> <span class="str">'\\'</span>\n    <span class="kw">or</span>  <span class="fn">lower</span>(u1_0.email)       <span class="kw">like</span> <span class="fn">lower</span>((<span class="str">'%'</span>||?||<span class="str">'%'</span>)) <span class="kw">escape</span> <span class="str">'\\'</span>`
+  }
+];
+
+let total = 0;
+
+async function renderEntry(q, idx) {
+  const div = document.createElement('div');
+  div.className = 'entry';
+  div.innerHTML = `<div class="cm-line">-- [${idx+1}]  ${q.ts}  (${q.ms} ms)</div><div class="sql-block">${q.sql}</div>`;
+  document.getElementById('inner').appendChild(div);
+  await s(30);
+  div.classList.add('in');
+  total += q.ms;
+  document.getElementById('scount').textContent = `${idx+1} quer${idx===0?'y':'ies'}`;
+  document.getElementById('sbadge').textContent = total + ' ms';
+}
+
+async function loop() {
+  const inner = document.getElementById('inner');
+  const badge = document.getElementById('sbadge');
+  const scount = document.getElementById('scount');
+  inner.innerHTML = '';
+  total = 0;
+  scount.textContent = '0 queries';
+  badge.className = 'sbadge sg';
+  badge.textContent = '–';
+
+  await s(900);
+  for (let i = 0; i < QUERIES.length; i++) {
+    await s(i === 0 ? 100 : 520);
+    await renderEntry(QUERIES[i], i);
+  }
+  badge.textContent = total + ' ms';
+  await s(4000);
+  loop();
+}
+loop();
+</script>
+</body></html>

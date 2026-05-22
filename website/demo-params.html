@@ -1,0 +1,136 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<style>
+:root{
+  --bg:#1e1f22;--panel:#2b2d30;--panel2:#26282b;--toolbar:#313438;
+  --ink:#dfe1e5;--ink2:#c2c5ca;--ink-dim:#9ba0a8;
+  --border:#1e1f22;--border-sub:#393b40;
+  --accent:#548af7;--accent-sub:#233558;
+  --success:#5fb865;--success-sub:#1f3a22;
+  --indigo:#9b94f5;--indigo-sub:#252346;
+  --amber:#e3b341;--amber-sub:#3d2f0f;
+  --teal:#45b5aa;--teal-sub:#0d2e2c;
+  --violet:#a78bfa;--violet-sub:#2e1065;
+  --hover:#393b40;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;color:var(--ink)}
+.root{height:100%;display:flex;flex-direction:column}
+.tb{background:var(--panel);height:22px;display:flex;align-items:center;padding:0 10px;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.dot{width:9px;height:9px;border-radius:50%}.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+.tt{flex:1;text-align:center;font-size:10px;color:var(--ink-dim)}
+
+/* header */
+.hdr{background:linear-gradient(135deg,#1C1B4B,#13131F);border-bottom:1px solid #312E81;padding:7px 12px;flex-shrink:0}
+.hdr-title{font-size:12px;font-weight:700;color:#E0E7FF;font-family:'JetBrains Mono',Consolas,monospace}
+.hdr-sub{font-size:10px;color:#818CF8;margin-top:1px}
+
+/* form */
+.form{flex:1;overflow:hidden;padding:8px 12px;display:flex;flex-direction:column;gap:7px;background:var(--panel)}
+.fr{display:flex;align-items:center;gap:6px}
+.fl{font-size:10px;color:var(--ink-dim);width:58px;flex-shrink:0}
+.ft{font-size:9px;padding:1px 5px;border-radius:5px;font-weight:700;flex-shrink:0;width:62px;text-align:center}
+.ft-str{background:var(--accent-sub);color:var(--accent)}
+.ft-enum{background:var(--violet-sub);color:var(--violet)}
+.ft-date{background:var(--teal-sub);color:var(--teal)}
+.ft-page{background:var(--amber-sub);color:var(--amber)}
+.ft-long{background:var(--indigo-sub);color:var(--indigo)}
+.fi{flex:1;background:var(--bg);border:1px solid var(--border-sub);border-radius:3px;padding:2px 6px;color:var(--ink);font-size:10px;font-family:'JetBrains Mono',Consolas,monospace;height:20px;outline:none;transition:border-color .15s}
+.fi.focus{border-color:var(--accent)}
+.fi.filled{border-color:var(--success)}
+.dice{background:transparent;border:1px solid var(--border-sub);border-radius:3px;padding:0 5px;color:var(--ink-dim);font-size:11px;cursor:pointer;height:20px;line-height:1;flex-shrink:0;font-family:inherit;transition:color .15s,border-color .15s}
+.dice:hover{color:var(--ink);border-color:var(--ink-dim)}
+.dice.spin{animation:ds .35s ease}
+@keyframes ds{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+
+/* bottom bar */
+.bar{background:var(--toolbar);border-top:1px solid var(--border-sub);padding:6px 12px;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.brun{background:var(--accent);color:#fff;border:none;border-radius:3px;padding:4px 14px;font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:filter .15s}
+.bgen{background:transparent;color:var(--ink);border:1px solid var(--border-sub);border-radius:3px;padding:4px 10px;font-size:10px;cursor:pointer;font-family:inherit;transition:background .15s,color .15s}
+.bgen:hover{background:var(--hover)}
+.bgen.active{background:var(--accent-sub);color:var(--accent);border-color:var(--accent)}
+
+.sb{background:#3c3f41;height:18px;display:flex;align-items:center;padding:0 8px;border-top:1px solid var(--border);flex-shrink:0}
+.si{font-size:9px;color:var(--ink-dim)}
+</style></head><body>
+<div class="root">
+  <div class="tb">
+    <div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div>
+    <span class="tt">Parameter Input — RepoBuddy</span>
+  </div>
+  <div class="hdr">
+    <div class="hdr-title">findByEmailStatusAndCreatedAfter</div>
+    <div class="hdr-sub">5 parameters · type-aware input with auto-generation</div>
+  </div>
+  <div class="form">
+    <div class="fr"><span class="fl">email</span><span class="ft ft-str">String</span><input class="fi" id="f0" readonly/><button class="dice" id="d0">⚄</button></div>
+    <div class="fr"><span class="fl">status</span><span class="ft ft-enum">UserStatus</span><input class="fi" id="f1" readonly/><button class="dice" id="d1">⚄</button></div>
+    <div class="fr"><span class="fl">createdAfter</span><span class="ft ft-date">LocalDate</span><input class="fi" id="f2" readonly/><button class="dice" id="d2">⚄</button></div>
+    <div class="fr"><span class="fl">pageable</span><span class="ft ft-page">Pageable</span><input class="fi" id="f3" readonly/><button class="dice" id="d3">⚄</button></div>
+    <div class="fr"><span class="fl">orgId</span><span class="ft ft-long">Long</span><input class="fi" id="f4" readonly/><button class="dice" id="d4">⚄</button></div>
+  </div>
+  <div class="bar">
+    <button class="bgen" id="bgen">🎲 Generate All</button>
+    <button class="brun">▶ Run</button>
+    <span style="margin-left:auto;font-size:10px;color:var(--ink-dim)" id="hint">Fill in parameters or click Generate All</span>
+  </div>
+  <div class="sb"><span class="si">30+ supported types including UUID, Enum, BigDecimal, ZonedDateTime…</span></div>
+</div>
+<script>
+const s = ms => new Promise(r => setTimeout(r, ms));
+const VALUES = ['alice@example.com','ACTIVE','2024-01-15','{"page":0,"size":10,"sort":"createdAt,desc"}','42'];
+const FIELDS = ['f0','f1','f2','f3','f4'];
+const DICE   = ['d0','d1','d2','d3','d4'];
+const ALTS   = [['bob@test.io','carol@dev.com','dave@acme.org'],['INACTIVE','PENDING','SUSPENDED'],['2023-06-01','2024-03-20','2025-01-01'],['{"page":1,"size":5}','{"page":0,"size":25}'],['7','99','314']];
+
+async function typeInto(el, text, spd=38) {
+  el.classList.remove('filled'); el.classList.add('focus');
+  el.value = '';
+  for (let i = 0; i <= text.length; i++) { el.value = text.slice(0,i); await s(spd + Math.random()*20); }
+  el.classList.remove('focus'); el.classList.add('filled');
+}
+
+async function resetFields(){
+  FIELDS.forEach(id=>{const el=document.getElementById(id);el.value='';el.classList.remove('filled','focus');});
+  document.getElementById('hint').textContent='Fill in parameters or click Generate All';
+  document.getElementById('bgen').classList.remove('active');
+}
+
+async function spinDice(diceId, fieldId, alt){
+  const d=document.getElementById(diceId), f=document.getElementById(fieldId);
+  d.classList.remove('spin'); void d.offsetWidth; d.classList.add('spin');
+  f.classList.remove('filled'); f.classList.add('focus');
+  await s(200);
+  f.value=''; await s(80);
+  await typeInto(f, alt, 40);
+}
+
+async function loop() {
+  await resetFields();
+  await s(1500);
+
+  // Phase 1: click Generate All
+  const bg = document.getElementById('bgen');
+  bg.classList.add('active');
+  document.getElementById('hint').textContent='Generating realistic values…';
+  await s(300);
+  for(let i=0;i<FIELDS.length;i++){
+    await typeInto(document.getElementById(FIELDS[i]), VALUES[i]);
+    await s(120);
+  }
+  document.getElementById('hint').textContent='All fields populated ✓';
+  await s(1800);
+
+  // Phase 2: dice one field
+  await spinDice('d1','f1', ALTS[1][0]);
+  await s(400);
+  await spinDice('d0','f0', ALTS[0][1]);
+  await s(1600);
+
+  // Reset and loop
+  await resetFields();
+  await s(400);
+  loop();
+}
+loop();
+</script>
+</body></html>

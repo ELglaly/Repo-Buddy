@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>RepoBuddy — Run Spring Data JPA Queries From Your IDE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<!-- ═══ NAVBAR ═══════════════════════════════════════════════════════════════ -->
+<nav>
+  <div class="nav-in">
+    <a href="#" class="logo">
+      <div class="logo-icon">RB</div>
+      <span class="logo-text">RepoBuddy</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#use-cases">Use Cases</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <a href="https://plugins.jetbrains.com/plugin/31285-repobuddy" class="nav-cta" target="_blank" rel="noopener">
+      <span class="cta-circle">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1L12 6.5L6.5 12M1 6.5h11" stroke="#111" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      Get Plugin Free
+    </a>
+    <button class="hamburger" id="ham" aria-label="Menu"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="mob-nav" id="mobNav">
+  <a href="#features" onclick="closeNav()">Features</a>
+  <a href="#use-cases" onclick="closeNav()">Use Cases</a>
+  <a href="#install" onclick="closeNav()">Install</a>
+  <a href="#faq" onclick="closeNav()">FAQ</a>
+  <a href="https://plugins.jetbrains.com/plugin/31285-repobuddy" class="btn-p" style="margin-top:28px;display:inline-flex" target="_blank">Get Plugin Free →</a>
+</div>
+
+<!-- ═══ HERO ══════════════════════════════════════════════════════════════════ -->
+<section class="hero">
+  <div>
+    <div class="hero-badge">
+      <span class="pulse-dot"></span>
+      v1.0.6 · Free on JetBrains Marketplace
+    </div>
+    <h1 class="hero-title">Run JPA queries<br><span>from the gutter.</span><br>Instantly.</h1>
+    <p class="hero-sub">RepoBuddy is a free IntelliJ plugin that lets you execute any Spring Data JPA repository method against your live app — see the real JSON result, captured SQL, and execution time without leaving the editor.</p>
+    <div class="hero-actions">
+      <a href="https://plugins.jetbrains.com/plugin/31285-repobuddy" class="btn-p" target="_blank" rel="noopener">⬇ Install from Marketplace</a>
+      <a href="https://github.com/ELglaly/Repo-Buddy" class="btn-s" target="_blank" rel="noopener">☆ Star on GitHub</a>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="hero-card">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:13px">
+        <div class="win-dots"><div class="wd wd-r"></div><div class="wd wd-y"></div><div class="wd wd-g"></div></div>
+        <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-left:6px">UserRepository.java</span>
+      </div>
+      <div class="hcode">
+        <div><span style="color:#64748b">// Spring Data JPA</span></div>
+        <div><span class="ck">public interface</span> <span class="ct">UserRepository</span></div>
+        <div>&nbsp;&nbsp;<span class="ck">extends</span> <span class="ct">JpaRepository</span>&lt;<span class="ct">User</span>,<span class="ct">Long</span>&gt; {</div>
+        <div>&nbsp;</div>
+        <div><span class="gutter">⌕</span><span class="ct">List</span>&lt;<span class="ct">User</span>&gt; <span class="cm">findByEmailAndStatus</span>(</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ct">String</span> <span class="cp">email</span>, <span class="ct">UserStatus</span> <span class="cp">status</span>);</div>
+        <div>&nbsp;</div>
+        <div><span class="gutter">⌕</span><span class="ct">Page</span>&lt;<span class="ct">User</span>&gt; <span class="cm">findAllByCreatedAtAfter</span>(</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="ct">LocalDate</span> <span class="cp">date</span>, <span class="ct">Pageable</span> <span class="cp">p</span>);</div>
+        <div>}</div>
+      </div>
+      <div class="hero-result">
+        <div class="rbadge">✓ 23 ms · 3 rows</div>
+        <div>{ "id":1, "email":"alice@acme.com", "status":"ACTIVE" }</div>
+        <div>{ "id":2, "email":"bob@acme.com",&nbsp; "status":"ACTIVE" }</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ STATS ═════════════════════════════════════════════════════════════════ -->
+<div class="stripe">
+  <div class="stats-row" id="statsRow">
+    <div class="stat"><span class="stat-n" data-to="30" data-suf="+">0</span><div class="stat-l">Parameter types supported</div></div>
+    <div class="stat"><span class="stat-n" data-to="5" data-suf="">0</span><div class="stat-l">Built-in code inspections</div></div>
+    <div class="stat"><span class="stat-n" data-to="0" data-suf=" config">0</span><div class="stat-l">Setup steps required</div></div>
+    <div class="stat"><span class="stat-n" data-to="100" data-suf="% free">0</span><div class="stat-l">No paid tiers, ever</div></div>
+    <div class="stat"><span class="stat-n" data-to="2023" data-suf=".2+">0</span><div class="stat-l">IntelliJ version minimum</div></div>
+    <div class="stat"><span class="stat-n" data-to="1" data-suf=" click">0</span><div class="stat-l">To run any JPA query</div></div>
+  </div>
+</div>
+
+<!-- ═══ FEATURES ══════════════════════════════════════════════════════════════ -->
+<section class="feat-section" id="features">
+  <div class="rv">
+    <div class="sec-badge">✦ Features</div>
+    <h2 class="sec-title">Everything you need,<br>nothing you don't</h2>
+    <p class="sec-sub">Six powerful capabilities built into IntelliJ — no REST client, no test file, no restart needed.</p>
+  </div>
+  <div class="feat-grid">
+
+    <!-- 1: Runner -->
+    <div class="feat-card rv">
+      <div class="feat-canvas-wrap">
+        <iframe class="feat-demo-frame" src="demo-runner.html" scrolling="no" title="Instant Repository Runner demo"></iframe>
+      </div>
+      <div class="feat-body">
+        <div class="feat-ico" style="background:#EEEEFF">⚡</div>
+        <div class="feat-name">Instant Repository Runner</div>
+        <div class="feat-desc">Click the ⌕ gutter icon next to any Spring Data JPA method to run it against your live app. Real JPA context, real database, real results — no test file, no restart.</div>
+      </div>
+    </div>
+
+    <!-- 2: SQL -->
+    <div class="feat-card rv">
+      <div class="feat-canvas-wrap">
+        <iframe class="feat-demo-frame" src="demo-sql.html" scrolling="no" title="SQL Transparency demo"></iframe>
+      </div>
+      <div class="feat-body">
+        <div class="feat-ico" style="background:#FFF7ED">🔍</div>
+        <div class="feat-name">SQL Transparency</div>
+        <div class="feat-desc">Every Hibernate statement triggered by your call is intercepted, ordered, and timestamped via StatementInspector. N+1 problems have nowhere to hide.</div>
+      </div>
+    </div>
+
+    <!-- 3: Params -->
+    <div class="feat-card rv">
+      <div class="feat-canvas-wrap">
+        <iframe class="feat-demo-frame" src="demo-params.html" scrolling="no" title="Smart Parameter Input demo"></iframe>
+      </div>
+      <div class="feat-body">
+        <div class="feat-ico" style="background:#F0FDF4">🎲</div>
+        <div class="feat-name">Smart Parameter Input</div>
+        <div class="feat-desc">Type-aware input widgets generated per parameter — String, UUID, LocalDate, Pageable, Enum, List&lt;Long&gt;, and 24 more. Hit "Generate All" for instant realistic test data.</div>
+      </div>
+    </div>
+
+    <!-- 4: Chain -->
+    <div class="feat-card rv">
+      <div class="feat-canvas-wrap">
+        <iframe class="feat-demo-frame" src="demo-chain.html" scrolling="no" title="Call Chain Tracer demo"></iframe>
+      </div>
+      <div class="feat-body">
+        <div class="feat-ico" style="background:#FDF4FF">🌿</div>
+        <div class="feat-name">Call Chain Tracer</div>
+        <div class="feat-desc">Pick any Spring MVC endpoint and trace every repository method it touches. Results render as an expandable tree with HTTP method badges, @Transactional markers, and double-click navigation.</div>
+      </div>
+    </div>
+
+    <!-- 5: Analytics -->
+    <div class="feat-card rv">
+      <div class="feat-canvas-wrap">
+        <iframe class="feat-demo-frame" src="demo-analytics.html" scrolling="no" title="Repository Usage Analytics demo"></iframe>
+      </div>
+      <div class="feat-body">
+        <div class="feat-ico" style="background:#FFFBEB">📊</div>
+        <div class="feat-name">Repository Usage Analytics</div>
+        <div class="feat-desc">Call-count badges across your whole project — green (hot), amber (rare), red (never called). Filter by file, toggle "Show Unused Only", and export to CSV in one click.</div>
+      </div>
+    </div>
+
+    <!-- 6: Inspections -->
+    <div class="feat-card rv">
+      <div class="feat-canvas-wrap">
+        <iframe class="feat-demo-frame" src="demo-inspect.html" scrolling="no" title="Code Inspections demo"></iframe>
+      </div>
+      <div class="feat-body">
+        <div class="feat-ico" style="background:#FFF1F2">🛡️</div>
+        <div class="feat-name">Code Inspections</div>
+        <div class="feat-desc">Five inspections catch N+1 queries, missing @Transactional, unsafe @Query, self-invocation, and unbounded result sets — surfaced in the Issues panel, not as noisy editor underlines.</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══ TERMINAL DEMO ════════════════════════════════════════════════════════ -->
+<div class="stripe">
+  <div class="wrap">
+    <div class="rv" style="text-align:center;margin-bottom:44px">
+      <div class="sec-badge">✦ Zero Config</div>
+      <h2 class="sec-title">Up and running in 60 seconds</h2>
+      <p class="sec-sub" style="margin:0 auto">Install, restart, open your project — RepoBuddy detects Spring Boot run configurations and patches them automatically.</p>
+    </div>
+    <div class="terminal rv">
+      <div class="term-bar">
+        <div class="wd wd-r"></div><div class="wd wd-y"></div><div class="wd wd-g"></div>
+        <span style="margin-left:10px;font-size:11px;color:#475569;font-family:'JetBrains Mono',monospace">IntelliJ IDEA — Plugin Installation</span>
+      </div>
+      <div class="term-body" id="termBody"><span class="tcur"></span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ COMPARISON TABLE ══════════════════════════════════════════════════════ -->
+<section class="wrap" id="compare">
+  <div class="rv" style="text-align:center;margin-bottom:44px">
+    <div class="sec-badge">✦ Before &amp; After</div>
+    <h2 class="sec-title">Stop the debugging theater</h2>
+    <p class="sec-sub" style="margin:0 auto">The old way burns 10–20 minutes per data-layer question. RepoBuddy collapses that to a single click.</p>
+  </div>
+  <div class="rv">
+    <table class="cmp-table">
+      <thead>
+        <tr><th>😩 Without RepoBuddy</th><th>✅ With RepoBuddy</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="x">✗</span>Write a unit test and mock half the world</td>
+          <td><span class="ck2">✓</span>Click ⌕ in the gutter — runs against live app</td>
+        </tr>
+        <tr>
+          <td><span class="x">✗</span>Fire up Postman against a proxy endpoint</td>
+          <td><span class="ck2">✓</span>See real JSON result inside the IDE popup</td>
+        </tr>
+        <tr>
+          <td><span class="x">✗</span>Add a CommandLineRunner hack and redeploy</td>
+          <td><span class="ck2">✓</span>No redeploy — agent is already injected at startup</td>
+        </tr>
+        <tr>
+          <td><span class="x">✗</span>Hunt N+1 queries blind in production logs</td>
+          <td><span class="ck2">✓</span>Every Hibernate statement captured &amp; timestamped</td>
+        </tr>
+        <tr>
+          <td><span class="x">✗</span>Discover missing @Transactional after deploy</td>
+          <td><span class="ck2">✓</span>Issues panel flags it before you commit</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══ USE CASES ══════════════════════════════════════════════════════════════ -->
+<div class="stripe">
+  <section class="wrap" id="use-cases">
+    <div class="rv">
+      <div class="sec-badge">✦ Use Cases</div>
+      <h2 class="sec-title">Built for every developer<br>on the team</h2>
+      <p class="sec-sub">Whether you own the data layer or just touched it for the first time, RepoBuddy meets you where you are.</p>
+    </div>
+    <div class="uc-grid">
+      <div class="uc-card rv">
+        <span class="uc-ico">🏗️</span>
+        <div class="uc-role">Lead Developer</div>
+        <div class="uc-title">Kill debugging debt before it compounds</div>
+        <p class="uc-desc">Stop watching your team spend 20 minutes wiring up Postman stubs every time someone wants to verify a query. With the gutter runner and SQL capture, every data-layer question gets answered in under a minute — from inside the IDE, against the real schema.</p>
+      </div>
+      <div class="uc-card rv">
+        <span class="uc-ico">📦</span>
+        <div class="uc-role">OSS Maintainer</div>
+        <div class="uc-title">Review contributors' queries with confidence</div>
+        <p class="uc-desc">Pull a contributor's branch, run their new repository methods directly, inspect the SQL they generate, and check for N+1 or missing pagination — all without a test harness or raw Hibernate logs. Merge with confidence.</p>
+      </div>
+      <div class="uc-card rv">
+        <span class="uc-ico">🔐</span>
+        <div class="uc-role">Security Engineer</div>
+        <div class="uc-title">Surface SpEL injection risks in seconds</div>
+        <p class="uc-desc">The Unsafe @Query inspection flags SpEL expressions in native queries and string-concatenated JPQL that can interpolate untrusted input. The Issues panel surfaces every finding across the codebase — searchable, sortable, and CSV-exportable for audit trails.</p>
+      </div>
+      <div class="uc-card rv">
+        <span class="uc-ico">🌱</span>
+        <div class="uc-role">New Contributor</div>
+        <div class="uc-title">Understand unfamiliar repositories fast</div>
+        <p class="uc-desc">Join a large Spring Boot codebase and use the Repository Usage Table to immediately see which methods are called (green), rarely used (amber), or dead code (red). Follow any API endpoint down to its data-layer roots with the Call Chain Tracer — no grep required.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ═══ INSTALLATION ═══════════════════════════════════════════════════════════ -->
+<div class="stripe">
+  <section class="wrap" id="install">
+    <div class="rv">
+      <div class="sec-badge">✦ Installation</div>
+      <h2 class="sec-title">Get started in one click</h2>
+      <p class="sec-sub">Install from JetBrains Marketplace in seconds, or build from source with Gradle.</p>
+    </div>
+    <div class="install-card rv">
+      <div class="install-tabs">
+        <button class="itab on" onclick="switchTab(this,'mkt')">JetBrains Marketplace</button>
+        <button class="itab" onclick="switchTab(this,'src')">Build from Source</button>
+        <button class="itab" onclick="switchTab(this,'req')">Requirements</button>
+      </div>
+      <div class="ipane on" id="pane-mkt">
+        <ol style="font-size:14.5px;line-height:2.1;padding-left:22px;color:var(--muted)">
+          <li>Open <strong style="color:var(--text)">IntelliJ IDEA</strong></li>
+          <li>Go to <strong style="color:var(--text)">Settings → Plugins → Marketplace</strong></li>
+          <li>Search for <strong style="color:var(--accent)">RepoBuddy</strong></li>
+          <li>Click <strong style="color:var(--text)">Install</strong> and restart</li>
+          <li>Open your Spring Boot project — gutter icons appear automatically ✓</li>
+        </ol>
+      </div>
+      <div class="ipane" id="pane-src">
+        <div class="codeblock">
+          <button class="copybtn" onclick="doCopy(this,'srccode')">Copy</button>
+          <pre id="srccode"># Clone the repository
+git clone https://github.com/ELglaly/Repo-Buddy.git
+cd RepoBuddy
+
+# Build the plugin ZIP
+./gradlew buildPlugin
+
+# Or launch a sandboxed IntelliJ instance
+./gradlew runIde</pre>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:10px">Built ZIP appears in <code>build/distributions/</code>. Install via <strong>Settings → Plugins → Install Plugin from Disk</strong>.</p>
+      </div>
+      <div class="ipane" id="pane-req">
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:11px 0;font-weight:600;width:55%">IntelliJ IDEA (Community or Ultimate)</td><td style="padding:11px 0;color:var(--muted)">2023.2+</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:11px 0;font-weight:600">Java / JDK</td><td style="padding:11px 0;color:var(--muted)">17+</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:11px 0;font-weight:600">Spring Boot</td><td style="padding:11px 0;color:var(--muted)">2.7.x, 3.x, 4.x+</td></tr>
+          <tr style="border-bottom:1px solid var(--border)"><td style="padding:11px 0;font-weight:600">Spring Data JPA</td><td style="padding:11px 0;color:var(--muted)">Must be on classpath</td></tr>
+          <tr><td style="padding:11px 0;font-weight:600">Application</td><td style="padding:11px 0;color:var(--muted)">Running locally from IntelliJ</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ═══ FAQ ════════════════════════════════════════════════════════════════════ -->
+<section class="wrap" id="faq">
+  <div class="rv" style="max-width:660px;margin:0 auto 44px">
+    <div class="sec-badge">✦ FAQ</div>
+    <h2 class="sec-title">Common questions</h2>
+  </div>
+  <div style="max-width:660px;margin:0 auto">
+    <div class="faq-item rv">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        Does RepoBuddy work with Spring Boot 3.x and the Jakarta namespace?
+        <span class="faq-ico">+</span>
+      </div>
+      <div class="faq-a">Yes. RepoBuddy supports Spring Boot 2.7.x, 3.x, and future 4.x releases. It ships both a <code>spring.factories</code> file and a <code>.imports</code> file so the embedded agent auto-configures on all supported versions. Both Spring and Jakarta <code>@Transactional</code> are fully recognised.</div>
+    </div>
+    <div class="faq-item rv">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        Will it add dependencies or files to my project's build?
+        <span class="faq-ico">+</span>
+      </div>
+      <div class="faq-a">No. RepoBuddy's agent JAR is embedded inside the plugin JAR and extracted to your system temp directory at runtime. Nothing is added to your <code>pom.xml</code> or <code>build.gradle</code>. The <code>-javaagent</code> flag is injected only into IntelliJ run configurations and is automatically cleaned up when you uninstall the plugin.</div>
+    </div>
+    <div class="faq-item rv">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        Is RepoBuddy free? Are there any paid tiers?
+        <span class="faq-ico">+</span>
+      </div>
+      <div class="faq-a">RepoBuddy is completely free and open-source. No paid tiers, no usage limits, no feature gates. The full source is on GitHub — contributions are welcome.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ════════════════════════════════════════════════════════════════ -->
+<footer>
+  <div class="foot-in">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <div class="logo"><div class="logo-icon">RB</div><span class="logo-text">RepoBuddy</span></div>
+        <p>A free IntelliJ IDEA plugin that brings Spring Data JPA execution, SQL inspection, and code analysis directly into your editor.</p>
+      </div>
+      <div class="foot-links">
+        <div class="fcol">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#install">Installation</a>
+          <a href="#use-cases">Use Cases</a>
+          <a href="#faq">FAQ</a>
+        </div>
+        <div class="fcol">
+          <h4>Links</h4>
+          <a href="https://plugins.jetbrains.com/plugin/31285-repobuddy" target="_blank" rel="noopener">JetBrains Marketplace</a>
+          <a href="https://github.com/ELglaly/Repo-Buddy" target="_blank" rel="noopener">GitHub Repository</a>
+          <a href="https://github.com/ELglaly/Repo-Buddy/issues" target="_blank" rel="noopener">Report an Issue</a>
+          <a href="https://elglaly.github.io/Sherif-Elglaly/" target="_blank" rel="noopener">Author Portfolio</a>
+        </div>
+        <div class="fcol">
+          <h4>Contact</h4>
+          <a href="mailto:sherifelglaly@gmail.com">sherifelglaly@gmail.com</a>
+          <a href="https://github.com/elglaly" target="_blank" rel="noopener">@elglaly on GitHub</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bot">
+      <span>© 2026 RepoBuddy · Built by <a href="https://elglaly.github.io/Sherif-Elglaly/">Sherif Elglaly</a></span>
+      <span>IntelliJ IDEA Plugin · Free &amp; Open Source</span>
+    </div>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>
