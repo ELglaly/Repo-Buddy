@@ -4,7 +4,7 @@ import com.intellij.execution.CommonJavaRunConfigurationParameters;
 import com.intellij.execution.RunManager;
 import com.intellij.ide.plugins.DynamicPluginListener;
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import org.jetbrains.annotations.NotNull;
@@ -18,32 +18,31 @@ import org.jetbrains.annotations.NotNull;
 public final class AgentConfigCleaner implements DynamicPluginListener {
 
     private static final String PLUGIN_ID    = "com.elglaly.repobuddy";
-    private static final String AGENT_MARKER = "repoBuddy-agent";
+    private static final Logger LOG = Logger.getInstance(AgentConfigCleaner.class);
 
     @Override
     public void beforePluginUnload(@NotNull IdeaPluginDescriptor descriptor,
                                    boolean isUpdate) {
         if (!PLUGIN_ID.equals(descriptor.getPluginId().getIdString())) return;
 
-        ApplicationManager.getApplication().invokeLater(() -> {
-            for (Project project : ProjectManager.getInstance().getOpenProjects()) {
-                if (project.isDisposed()) continue;
-                removeAgentFromConfigurations(project);
-            }
-        });
+        for (Project project : ProjectManager.getInstance().getOpenProjects()) {
+            if (project.isDisposed()) continue;
+            try { removeAgentFromConfigurations(project); }
+            catch (Exception e) { LOG.warn("RepoBuddy: failed to clean legacy Java agent entries during plugin unload", e); }
+        }
     }
 
-    private static void removeAgentFromConfigurations(Project project) {
+    public static int removeAgentFromConfigurations(Project project) {
         RunManager mgr = RunManager.getInstance(project);
+        int removed = 0;
         for (var settings : mgr.getAllSettings()) {
             if (!(settings.getConfiguration() instanceof CommonJavaRunConfigurationParameters cfg)) continue;
             String current = cfg.getVMParameters();
-            if (current == null || !current.contains(AGENT_MARKER)) continue;
-            String cleaned = current
-                    .replaceAll("-javaagent:\\S*" + AGENT_MARKER + "\\S*", "")
-                    .replaceAll("\\s{2,}", " ")
-                    .trim();
-            cfg.setVMParameters(cleaned.isEmpty() ? null : cleaned);
+            String cleaned = RepoBuddyAgentArguments.removeRepoBuddyAgentArguments(current);
+            if (java.util.Objects.equals(current, cleaned)) continue;
+            cfg.setVMParameters(cleaned);
+            removed++;
         }
+        return removed;
     }
 }

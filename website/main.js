@@ -51,7 +51,7 @@ const TERM_LINES = [
   ['c','# 1. Open Settings → Plugins → Marketplace'],
   ['g'],
   ['p','> Search: RepoBuddy'],
-  ['s','  ✓ Found: RepoBuddy v1.0.6 by Sherif Elglaly'],
+  ['s','  ✓ Found: RepoBuddy v1.0.7 by Sherif Elglaly'],
   ['g'],
   ['p','> Install'],
   ['i','  Downloading repoBuddy-agent.jar …'],

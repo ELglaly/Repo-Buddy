@@ -91,7 +91,9 @@
                     factoryClass="com.repoinspector.ui.RepoInspectorToolWindowFactory"/>
 
         <postStartupActivity
-                implementation="com.repoinspector.runner.startup.AgentRunConfigPatcher"/>
+                implementation="com.repoinspector.runner.startup.RepoBuddyAgentMigrationActivity"/>
+
+        <java.programPatcher implementation="com.repoinspector.runner.startup.RepoBuddyJavaProgramPatcher"/>
 
         <notificationGroup id="RepoBuddy Notifications"
                            displayType="BALLOON"

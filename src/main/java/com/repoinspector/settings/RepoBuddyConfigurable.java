@@ -8,6 +8,7 @@ import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
 import com.repoinspector.inspections.scan.RepoBuddyIssueService;
+import com.repoinspector.runner.startup.AgentConfigCleaner;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -25,6 +26,7 @@ import java.awt.*;
 public final class RepoBuddyConfigurable implements Configurable {
 
     private JBCheckBox panelOnlyCheckBox;
+    private JBCheckBox javaAgentCheckBox;
 
     @Override
     public @Nls(capitalization = Nls.Capitalization.Title) String getDisplayName() {
@@ -35,6 +37,7 @@ public final class RepoBuddyConfigurable implements Configurable {
     public @Nullable JComponent createComponent() {
         panelOnlyCheckBox = new JBCheckBox(
                 "Show RepoBuddy issues only in the Issues panel (hide inline warnings)");
+        javaAgentCheckBox = new JBCheckBox("Enable RepoBuddy Java agent");
 
         JBLabel hint = new JBLabel(
                 "<html>When enabled, the five RepoBuddy inspections do not add inline underlines or "
@@ -43,6 +46,10 @@ public final class RepoBuddyConfigurable implements Configurable {
                         + "When disabled, the inspections also behave as ordinary editor warnings.</html>");
         hint.setForeground(UIManager.getColor("Label.disabledForeground"));
         hint.setBorder(JBUI.Borders.emptyLeft(24));
+        JBLabel agentHint = new JBLabel("<html>Injects the RepoBuddy agent when supported Java applications are launched. "
+                + "The agent is added at runtime and is not stored in shared run configurations.</html>");
+        agentHint.setForeground(UIManager.getColor("Label.disabledForeground"));
+        agentHint.setBorder(JBUI.Borders.emptyLeft(24));
 
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -52,6 +59,12 @@ public final class RepoBuddyConfigurable implements Configurable {
         panel.add(panelOnlyCheckBox);
         panel.add(Box.createVerticalStrut(JBUI.scale(6)));
         panel.add(hint);
+        panel.add(Box.createVerticalStrut(JBUI.scale(14)));
+        javaAgentCheckBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        agentHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.add(javaAgentCheckBox);
+        panel.add(Box.createVerticalStrut(JBUI.scale(6)));
+        panel.add(agentHint);
 
         reset();
         return panel;
@@ -59,18 +72,22 @@ public final class RepoBuddyConfigurable implements Configurable {
 
     @Override
     public boolean isModified() {
-        return panelOnlyCheckBox != null
-                && panelOnlyCheckBox.isSelected() != RepoBuddySettings.getInstance().isPanelOnlyMode();
+        return panelOnlyCheckBox != null && (panelOnlyCheckBox.isSelected() != RepoBuddySettings.getInstance().isPanelOnlyMode()
+                || javaAgentCheckBox.isSelected() != RepoBuddySettings.getInstance().isJavaAgentEnabled());
     }
 
     @Override
     public void apply() {
         if (panelOnlyCheckBox == null) return;
-        RepoBuddySettings.getInstance().setPanelOnlyMode(panelOnlyCheckBox.isSelected());
+        RepoBuddySettings settings = RepoBuddySettings.getInstance();
+        boolean agentWasEnabled = settings.isJavaAgentEnabled();
+        settings.setPanelOnlyMode(panelOnlyCheckBox.isSelected());
+        settings.setJavaAgentEnabled(javaAgentCheckBox.isSelected());
         for (Project project : ProjectManager.getInstance().getOpenProjects()) {
             if (project.isDisposed()) continue;
             DaemonCodeAnalyzer.getInstance(project).restart();
             RepoBuddyIssueService.getInstance(project).refreshOpenFiles();
+            if (agentWasEnabled && !javaAgentCheckBox.isSelected()) AgentConfigCleaner.removeAgentFromConfigurations(project);
         }
     }
 
@@ -78,11 +95,13 @@ public final class RepoBuddyConfigurable implements Configurable {
     public void reset() {
         if (panelOnlyCheckBox != null) {
             panelOnlyCheckBox.setSelected(RepoBuddySettings.getInstance().isPanelOnlyMode());
+            javaAgentCheckBox.setSelected(RepoBuddySettings.getInstance().isJavaAgentEnabled());
         }
     }
 
     @Override
     public void disposeUIResources() {
         panelOnlyCheckBox = null;
+        javaAgentCheckBox = null;
     }
 }

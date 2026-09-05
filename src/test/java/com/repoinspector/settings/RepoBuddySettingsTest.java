@@ -16,6 +16,14 @@ class RepoBuddySettingsTest {
     }
 
     @Test
+    void javaAgentEnabled_defaultsToTrueAndRoundTrips() {
+        RepoBuddySettings settings = new RepoBuddySettings();
+        assertTrue(settings.isJavaAgentEnabled());
+        settings.setJavaAgentEnabled(false);
+        assertFalse(settings.isJavaAgentEnabled());
+    }
+
+    @Test
     void setPanelOnlyMode_roundTrips() {
         RepoBuddySettings settings = new RepoBuddySettings();
         settings.setPanelOnlyMode(false);

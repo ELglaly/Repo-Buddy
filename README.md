@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=gradle)
-![Version](https://img.shields.io/badge/version-1.0.6-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.7-blue?style=for-the-badge)
 ![IntelliJ](https://img.shields.io/badge/IntelliJ-2023.2%2B-orange?style=for-the-badge&logo=intellij-idea)
 ![Java](https://img.shields.io/badge/Java-17%2B-red?style=for-the-badge&logo=openjdk)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.7%2B-6DB33F?style=for-the-badge&logo=springboot)
@@ -145,8 +145,8 @@ then also configurable under **Settings → Editor → Inspections → RepoBuddy
   file three times.
 
 ### Zero Configuration
-- **Automatic `-javaagent` injection** into your run configurations on project open — implemented via IntelliJ's `ProjectActivity` API (compatible with 2023.2+)
-- **Clean uninstall** — all injected `-javaagent` flags are automatically removed from every run configuration when the plugin is uninstalled; no manual cleanup needed
+- **Runtime-only `-javaagent` injection** — RepoBuddy adds its agent to the in-memory Java command line immediately before launch, never to shared run-configuration files
+- **Safe legacy cleanup** — persisted agent flags from older releases are removed without touching third-party Java agents
 - No extra Maven / Gradle dependencies needed in your project
 - **Live agent status indicator** — the popup header shows `● Agent Ready` / `● Offline` so you know at a glance whether the agent is reachable before hitting Run
 
@@ -191,7 +191,7 @@ The built plugin `.zip` will appear in `build/distributions/`. Install it via **
 
 ### 1. Open Your Spring Boot Project
 
-RepoBuddy detects Spring Boot run configurations automatically on project open and patches them with the `-javaagent` flag. No manual setup required.
+RepoBuddy injects its Java agent only into the in-memory Java command line when a supported application is launched. The local agent path is never saved in `.run` or `.idea/runConfigurations` files. Enable or disable this from **Settings | Tools | RepoBuddy | Enable RepoBuddy Java agent**.
 
 ### 2. Start Your Application
 
@@ -262,7 +262,7 @@ RepoBuddy/
 │       ├── runner/                 # Execution subsystem
 │       │   ├── model/              # Request/response DTOs
 │       │   ├── service/            # Parameter extraction, Spring URL resolution
-│       │   ├── startup/            # AgentRunConfigPatcher (inject on open), AgentConfigCleaner (cleanup on uninstall)
+│       │   ├── startup/            # Runtime agent patcher and legacy-agent cleanup
 │       │   └── ui/                 # Execution popup panels
 │       └── ui/                     # Tool window panels (RepoInspector, CallChain)
 │
@@ -281,8 +281,8 @@ RepoBuddy/
 ```
 IntelliJ Plugin                          Spring Boot App (your app)
 ─────────────────                        ─────────────────────────────────────
-1. AgentRunConfigPatcher patches          repoBuddy-agent.jar is added as
-   your Run Config on project open  ───▶  -javaagent at JVM startup
+1. RepoBuddyJavaProgramPatcher adds       repoBuddy-agent.jar is added to the
+   the agent at execution time       ───▶  in-memory JVM command line
 
 2. User clicks ⌕|✎ gutter icon
    → RepoRunnerPopup opens
@@ -309,9 +309,15 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 
 ## Changelog
 
+### 1.0.7
+- Prevented RepoBuddy from persisting machine-specific `-javaagent` paths in shared run configurations
+- Added runtime-only Java agent injection for supported launches, with a setting to disable it
+- Added cleanup for legacy RepoBuddy agent entries while preserving third-party Java agents and existing VM options
+- Prevented duplicate RepoBuddy agent arguments across Windows, macOS, Linux, quoted paths, and paths containing spaces
+
 ### 1.0.5
 - **Spring Boot 2.7+ support** — agent now auto-configures on Spring Boot 2.7.x, 3.x, and future 4.x releases (adds `spring.factories` alongside the existing `.imports` file)
-- **Clean uninstall** — injected `-javaagent` flags are automatically stripped from all run configurations when the plugin is uninstalled
+- **Clean uninstall** — legacy RepoBuddy `-javaagent` flags are defensively stripped from open run configurations when dynamic unload permits it
 
 ### 1.0.4
 - Fixed plugin description not appearing on JetBrains Marketplace
@@ -343,7 +349,7 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 
 | Requirement | Version |
 |---|---|
-| IntelliJ IDEA (Community or Ultimate) | 2023.1+ |
+| IntelliJ IDEA (Community or Ultimate) | 2023.2+ |
 | Java / JDK | 17+ |
 | Spring Boot | 2.7.x, 3.x, 4.x+ |
 | Spring Data JPA | on classpath |
@@ -382,6 +388,6 @@ Please include:
 
 <div align="center">
 
-Built with care by [Sherif Elglaly](https://elglaly.github.io/Sherif-Elglaly/) · [Plugin Page]([https://plugins.jetbrains.com](https://plugins.jetbrains.com/plugin/31285-repobuddy) · [Report an Issue](https://github.com/elglaly/RepoBuddy/issues)
+Built with care by [Sherif Elglaly](https://elglaly.github.io/Sherif-Elglaly/) · [Plugin Page](https://plugins.jetbrains.com/plugin/31285-repobuddy) · [Report an Issue](https://github.com/elglaly/RepoBuddy/issues)
 
 </div>

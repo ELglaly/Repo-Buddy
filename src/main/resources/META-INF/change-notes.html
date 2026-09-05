@@ -1,3 +1,12 @@
+<h3>1.0.7 - Java Agent Handling</h3>
+<ul>
+  <li>Prevented RepoBuddy from persisting machine-specific <code>-javaagent</code> paths in shared run configurations.</li>
+  <li>Added runtime-only Java agent injection for supported Java launches.</li>
+  <li>Added a setting to enable or disable RepoBuddy Java agent integration.</li>
+  <li>Cleaned up legacy RepoBuddy agent entries while preserving unrelated Java agents and VM options.</li>
+  <li>Prevented duplicate RepoBuddy agent arguments across Windows, macOS, and Linux paths.</li>
+</ul>
+
 <h3>1.0.6 - Code Quality Inspections &amp; IDE Integration</h3>
 <ul>
   <li>New <b>Self-Invocation</b> inspection: detects <code>@Transactional</code> and <code>@Cacheable</code> methods called via <code>this.</code>, which bypasses Spring's proxy and silently drops the annotation's effect.</li>
