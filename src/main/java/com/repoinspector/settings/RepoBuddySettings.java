@@ -21,6 +21,7 @@ public final class RepoBuddySettings implements PersistentStateComponent<RepoBud
 
     public static final class State {
         public boolean panelOnlyMode = true;
+        public boolean javaAgentEnabled = true;
     }
 
     private State state = new State();
@@ -36,6 +37,10 @@ public final class RepoBuddySettings implements PersistentStateComponent<RepoBud
     public void setPanelOnlyMode(boolean panelOnlyMode) {
         state.panelOnlyMode = panelOnlyMode;
     }
+
+    public boolean isJavaAgentEnabled() { return state.javaAgentEnabled; }
+
+    public void setJavaAgentEnabled(boolean javaAgentEnabled) { state.javaAgentEnabled = javaAgentEnabled; }
 
     @Override
     public @NotNull State getState() {

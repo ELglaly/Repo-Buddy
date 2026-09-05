@@ -46,6 +46,14 @@ public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
     @Override
     public Object execute(@NotNull Project project,
                           @NotNull Continuation<? super Unit> continuation) {
+        boolean retired = true; // Runtime injection uses RepoBuddyJavaProgramPatcher.
+        if (retired) return Unit.INSTANCE;
+        boolean migrationOnly = true;
+        if (migrationOnly) {
+            int removed = AgentConfigCleaner.removeAgentFromConfigurations(project);
+            if (removed > 0) LOG.info("RepoBuddy: removed legacy Java agent entries from " + removed + " run configuration(s)");
+            return Unit.INSTANCE;
+        }
         Path agentJar = extractAgentJar();
         if (agentJar == null) {
             notify(project,
@@ -82,12 +90,11 @@ public final class AgentRunConfigPatcher implements ProjectActivity, DumbAware {
                         .replaceAll("-javaagent:\\S*" + AGENT_MARKER + "\\S*", jvmFlag)
                         .trim();
                 if (!updated.equals(current)) {
-                    cfg.setVMParameters(updated);
+                    // Legacy implementation retained only for binary compatibility; never invoked.
                     patched++;
                 }
             } else {
-                cfg.setVMParameters(
-                        current == null || current.isBlank() ? jvmFlag : jvmFlag + " " + current);
+                // Legacy implementation retained only for binary compatibility; never invoked.
                 patched++;
             }
         }
