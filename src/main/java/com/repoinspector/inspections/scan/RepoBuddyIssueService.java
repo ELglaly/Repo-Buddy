@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Single source of truth for RepoBuddy inspection findings within a project.
@@ -46,6 +47,8 @@ public final class RepoBuddyIssueService implements Disposable {
     private final Map<String, List<Finding>> byFile = new ConcurrentHashMap<>();
 
     private final MergingUpdateQueue refreshQueue;
+    private final Object projectScanLock = new Object();
+    private CompletableFuture<List<Finding>> activeProjectScan;
 
     public RepoBuddyIssueService(@NotNull Project project) {
         this.project = project;
@@ -96,7 +99,46 @@ public final class RepoBuddyIssueService implements Disposable {
 
     /** Re-scans the whole project and replaces the entire cache. */
     public void refreshProject() {
-        runScan(() -> scanner.scan(project, GlobalSearchScope.projectScope(project)), true, null);
+        requestProjectScan();
+    }
+
+    /** Runs or joins the current full-project scan and completes after the shared cache is updated. */
+    public @NotNull CompletableFuture<List<Finding>> requestProjectScan() {
+        synchronized (projectScanLock) {
+            if (activeProjectScan != null && !activeProjectScan.isDone()) return activeProjectScan;
+            CompletableFuture<List<Finding>> future = new CompletableFuture<>();
+            activeProjectScan = future;
+            if (project.isDisposed()) {
+                future.completeExceptionally(new IllegalStateException("Project is disposed"));
+                return future;
+            }
+            DumbService.getInstance(project).runWhenSmart(() ->
+                    ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                        if (project.isDisposed()) {
+                            future.completeExceptionally(new IllegalStateException("Project is disposed"));
+                            return;
+                        }
+                        try {
+                            List<Finding> result = scanner.scan(project, GlobalSearchScope.projectScope(project));
+                            ApplicationManager.getApplication().invokeLater(() -> {
+                                if (project.isDisposed()) {
+                                    future.completeExceptionally(new IllegalStateException("Project is disposed"));
+                                    return;
+                                }
+                                applyResult(result, true, null);
+                                future.complete(List.copyOf(result));
+                            }, project.getDisposed());
+                        } catch (RuntimeException error) {
+                            future.completeExceptionally(error);
+                        }
+                    }));
+            future.whenComplete((ignored, error) -> {
+                synchronized (projectScanLock) {
+                    if (activeProjectScan == future) activeProjectScan = null;
+                }
+            });
+            return future;
+        }
     }
 
     /** Re-scans a single file and replaces only that file's cache entry. */
@@ -179,6 +221,9 @@ public final class RepoBuddyIssueService implements Disposable {
     @Override
     public void dispose() {
         byFile.clear();
+        synchronized (projectScanLock) {
+            if (activeProjectScan != null) activeProjectScan.cancel(true);
+        }
         Disposer.dispose(refreshQueue);
     }
 }

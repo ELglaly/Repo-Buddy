@@ -10,6 +10,10 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/agent" />
+            <option value="$PROJECT_DIR$/repo-buddy-cli" />
+            <option value="$PROJECT_DIR$/repo-buddy-core" />
+            <option value="$PROJECT_DIR$/repo-buddy-ipc" />
+            <option value="$PROJECT_DIR$/repo-buddy-mcp" />
           </set>
         </option>
       </GradleProjectSettings>

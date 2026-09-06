@@ -30,6 +30,8 @@ tasks.processResources {
 }
 
 dependencies {
+    implementation(project(":repo-buddy-core"))
+    implementation(project(":repo-buddy-ipc"))
     implementation("com.google.code.gson:gson:2.10.1")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
@@ -43,6 +45,7 @@ dependencies {
     intellijPlatform {
         create("IC", "2025.1")
         bundledPlugin("com.intellij.java")
+        bundledPlugin("Git4Idea")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 }

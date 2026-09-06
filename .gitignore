@@ -49,6 +49,10 @@ bin/
 .claude/
 .intellijPlatform/
 
+### Local Codex guidance ###
+.codex/
+AGENTS.md
+
 ### Logs ###
 *.log
 logs/

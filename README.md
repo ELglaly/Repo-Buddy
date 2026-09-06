@@ -243,7 +243,22 @@ Right-click anywhere inside a Spring MVC controller method → **Trace Repositor
 
 ## Architecture
 
-RepoBuddy is a two-module Gradle project:
+RepoBuddy keeps the IntelliJ plugin at the Gradle root and separates reusable integration modules:
+
+```text
+repo-buddy-core  <- repo-buddy-ipc <- repo-buddy-cli
+        ^                 ^
+        |                 +---------- repo-buddy-mcp
+        |
+IntelliJ plugin -> RepoBuddyIssueService -> existing PSI inspections
+```
+
+The existing embedded `agent` remains dedicated to repository execution and SQL capture.
+
+The detailed boundaries and security model are documented in
+[`docs/REUSABLE_ANALYSIS_ARCHITECTURE.md`](docs/REUSABLE_ANALYSIS_ARCHITECTURE.md).
+
+The original plugin and agent source layout is:
 
 ```
 RepoBuddy/
@@ -304,6 +319,211 @@ IntelliJ Plugin                          Spring Boot App (your app)
 ```
 
 The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` and extracted to the system temp directory at runtime — no external download required.
+
+### RepoBuddy CLI
+
+The CLI exposes the same inspection findings collected by the IntelliJ plugin. Full scans require the
+project to be open in IntelliJ. Enable **Settings | Tools | RepoBuddy | Enable local CLI and MCP access**
+first; the integration is disabled by default.
+
+Build the runnable JAR:
+
+```powershell
+.\gradlew.bat :repo-buddy-cli:build
+java -jar .\repo-buddy-cli\build\libs\repo-buddy-cli.jar scan
+```
+
+On macOS or Linux:
+
+```bash
+./gradlew :repo-buddy-cli:build
+java -jar repo-buddy-cli/build/libs/repo-buddy-cli.jar scan
+```
+
+Commands:
+
+```bash
+repobuddy scan
+repobuddy scan --format json
+repobuddy issues --severity HIGH
+repobuddy issue RB-NPLUS1-15ac8d
+repobuddy context RB-NPLUS1-15ac8d --lines 10
+repobuddy rules
+repobuddy project-info --format json
+repobuddy projects
+```
+
+`scan` prints a summary rather than every issue. Use `issues` for details and its `--severity`,
+`--minimum-severity`, `--rule`, `--file`, `--limit`, `--offset`, and `--scan-id` filters. JSON is
+written to stdout and diagnostics to stderr. Issue pages default to 50 and are capped at 200.
+
+Scan exit codes are `0` for success below the selected threshold and `1` when findings meet
+`--fail-on` (default `any`). Codes `2`–`8` cover invalid arguments, unsupported projects, analysis
+failure, unavailable IntelliJ integration, authentication failure, disposed projects, and internal
+errors respectively.
+
+### AI agent and MCP integration
+
+RepoBuddy exposes a local, read-only MCP server for coding agents. The server does not edit
+source code: the agent makes edits in its normal workspace, then asks RepoBuddy to check the
+current changes.
+
+#### One-time IntelliJ setup
+
+Open the target Spring project in IntelliJ and enable:
+
+**Settings | Tools | RepoBuddy | Enable local CLI and MCP access**
+
+The project must remain open while the agent is using the MCP server. The integration is disabled
+by default.
+
+#### Build the server
+
+Run these build commands from the RepoBuddy checkout (the directory containing
+`gradlew.bat`), not from the Spring application repository. The MCP client can later be registered
+from the application repository.
+
+```bash
+./gradlew :repo-buddy-mcp:build
+java -jar repo-buddy-mcp/build/libs/repo-buddy-mcp.jar
+```
+
+On Windows:
+
+```powershell
+.\gradlew.bat :repo-buddy-mcp:build
+java -jar .\repo-buddy-mcp\build\libs\repo-buddy-mcp.jar
+```
+
+The `java -jar` command is the server process that MCP clients start for you; normally you do not
+run it in a separate terminal after registering it.
+
+For a client-device setup, add the RepoBuddy checkout directory to that device's `PATH` and use the
+`repobuddy-mcp` launcher included at the repository root. It resolves the JAR relative to itself, so
+the MCP configuration contains no developer-specific absolute path. Build the JAR once on that
+device first.
+
+#### Claude Code (copy and paste)
+
+Run this command from the application repository that Claude will edit, after `repobuddy-mcp` is on
+the client device's `PATH`:
+
+```powershell
+claude mcp add --scope project --transport stdio repobuddy -- `
+  repobuddy-mcp
+```
+
+Check the registration:
+
+```powershell
+claude mcp list
+```
+
+The project-scoped registration keeps RepoBuddy attached to the repository where the command was
+run. Claude Code must also be started from that repository (or given that repository as its
+working directory).
+
+#### Codex CLI
+
+If your Codex CLI provides the `mcp` command, run this from the application repository:
+
+```powershell
+codex mcp add repobuddy -- `
+  repobuddy-mcp
+```
+
+Verify it with:
+
+```powershell
+codex mcp list
+```
+
+If your Codex build does not include `codex mcp`, add the equivalent stdio server through its MCP
+settings using the command `java`, argument `-jar`, the absolute RepoBuddy JAR path, and the Spring
+project as the working directory. The same server definition is:
+
+```json
+{
+  "mcpServers": {
+    "repobuddy": {
+      "command": "repobuddy-mcp",
+      "args": [],
+      "cwd": "C:\\path\\to\\your\\spring-project"
+    }
+  }
+}
+```
+
+#### Other MCP clients
+
+For clients with a JSON MCP configuration, add the following server entry. Preserve any existing
+servers in the file and add `repobuddy` alongside them:
+
+```json
+{
+  "mcpServers": {
+    "repobuddy": {
+      "command": "java",
+      "args": ["-jar", "/absolute/path/to/repo-buddy-mcp.jar"],
+      "cwd": "/absolute/path/to/your/project"
+    }
+  }
+}
+```
+
+On Windows, escape backslashes in JSON paths, for example `C:\\tools\\repo-buddy-mcp.jar`.
+
+It exposes `repobuddy_list_projects`, `repobuddy_scan_project`, `repobuddy_list_issues`,
+`repobuddy_get_issue`, `repobuddy_get_issue_context`, `repobuddy_get_project_info`, and
+`repobuddy_get_rules`. Change-aware clients can also call `repobuddy_get_issues` with an explicit
+`scope` of `all` or `changed`, and `repobuddy_check_changes`. Use the stable `id` returned by
+`repobuddy_list_projects` as `projectId`;
+the display name is not the project identity. If the MCP process is started inside a project and
+exactly one matching IntelliJ project is open, `projectId` may be omitted.
+
+The recommended AI workflow is:
+
+```text
+1. repobuddy_list_projects
+2. repobuddy_scan_project → save scanId
+3. repobuddy_list_issues with scanId, limit <= 25, and offset 0
+4. Repeat with nextOffset while hasMore is true
+```
+
+For an AI repair loop, call `repobuddy_check_changes`. Stop when `passed` is true. Otherwise use
+the returned issues or `repobuddy_get_issues` with `scope: "changed"`, fix only the introduced
+findings, and check again. Pre-existing findings are intentionally excluded; do not change them
+unless the user explicitly requests an all-issues repair. Preserve the user's intended behavior
+rather than reverting legitimate functionality merely to silence an inspection.
+
+You can give the agent this instruction once setup is complete:
+
+```text
+After every code change, call repobuddy_check_changes. If passed is false, inspect only the
+returned INTRODUCED findings, fix the smallest safe change, and call repobuddy_check_changes again.
+Do not modify PRE_EXISTING findings unless I explicitly ask for an all-issues review. Stop when
+introducedIssueCount is zero, and preserve the intended behavior of the patch.
+```
+
+Issue pages are deliberately bounded so an AI client does not request hundreds of findings in one
+response. Each page includes `total`, `offset`, `nextOffset`, `hasMore`, and the current `issues`.
+MCP delegates to the same application service as the CLI and does not execute shell commands or
+implement analysis.
+
+### Security, privacy, and troubleshooting
+
+The local endpoint binds only to `127.0.0.1`, requires a random project-bound session token, bounds
+requests and responses, and rejects cross-project access. Context can only be requested by a valid
+issue ID; canonical real-path checks reject traversal and symlink escapes. No CLI or MCP command edits
+source, applies fixes, reads arbitrary paths, or exposes environment variables and credentials.
+
+RepoBuddy itself does not upload source. A connected AI client may send explicitly retrieved findings
+or source context to its configured AI provider; review that client's privacy settings.
+
+If a scan reports `REPOBUDDY_IDE_NOT_RUNNING`, open the matching project in IntelliJ and enable local
+CLI/MCP access. For MCP, call `repobuddy_list_projects` and pass the returned `id` as `projectId`.
+`REPOBUDDY_PROJECT_NOT_FOUND` means the selector was not a known project; `REPOBUDDY_PROJECT_AMBIGUOUS`
+means an exact project ID is required.
 
 ---
 

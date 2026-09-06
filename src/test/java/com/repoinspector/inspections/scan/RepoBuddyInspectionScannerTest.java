@@ -36,9 +36,12 @@ public class RepoBuddyInspectionScannerTest extends LightJavaCodeInsightFixtureT
                 .filter(f -> f.inspection().equals("Missing @Transactional"))
                 .findFirst().orElse(null);
         assertNotNull("expected a Missing @Transactional finding", hit);
+        assertEquals("missing-transactional", hit.ruleId());
         assertTrue(hit.message(), hit.message().contains("database write"));
         assertEquals("UserDao.java", hit.fileName());
         assertTrue("line should be 1-based positive, was " + hit.line(), hit.line() > 0);
+        assertTrue("column should be 1-based positive, was " + hit.column(), hit.column() > 0);
+        assertFalse("stable anchor should be present", hit.stableAnchor().isBlank());
     }
 
     public void testScanFileCleanFile_noFindings() {
@@ -48,5 +51,20 @@ public class RepoBuddyInspectionScannerTest extends LightJavaCodeInsightFixtureT
                         + "}\n");
 
         assertEmpty(scanner.scanFile(getProject(), file));
+    }
+
+    public void testStableAnchorDoesNotChangeWhenLinesAreInsertedBeforeIssue() {
+        PsiFile before = myFixture.configureByText("UserDao.java",
+                "import jakarta.persistence.EntityManager;\nclass UserDao {\n  EntityManager em;\n  void add(Object u) { em.persist(u); }\n}\n");
+        Finding original = scanner.scanFile(getProject(), before).stream()
+                .filter(f -> f.ruleId().equals("missing-transactional")).findFirst().orElseThrow();
+
+        PsiFile after = myFixture.configureByText("UserDao.java",
+                "\n\nimport jakarta.persistence.EntityManager;\nclass UserDao {\n  EntityManager em;\n  void add(Object u) { em.persist(u); }\n}\n");
+        Finding moved = scanner.scanFile(getProject(), after).stream()
+                .filter(f -> f.ruleId().equals("missing-transactional")).findFirst().orElseThrow();
+
+        assertEquals(original.stableAnchor(), moved.stableAnchor());
+        assertTrue(moved.line() > original.line());
     }
 }
