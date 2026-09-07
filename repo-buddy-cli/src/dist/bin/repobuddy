@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+JAR="$SCRIPT_DIR/../lib/repobuddy.jar"
+
+if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+  JAVA_BIN="$JAVA_HOME/bin/java"
+elif command -v java >/dev/null 2>&1; then
+  JAVA_BIN=$(command -v java)
+else
+  echo "RepoBuddy requires Java 17 or newer. Set JAVA_HOME or add java to PATH." >&2
+  exit 127
+fi
+
+if [ ! -f "$JAR" ]; then
+  echo "RepoBuddy installation is incomplete: $JAR was not found." >&2
+  exit 2
+fi
+
+exec "$JAVA_BIN" -jar "$JAR" "$@"

@@ -1,3 +1,8 @@
+import java.security.MessageDigest
+import java.io.ByteArrayInputStream
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
+
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.1.20"
@@ -83,5 +88,62 @@ tasks {
 
     publishPlugin {
         token.set(providers.gradleProperty("publishToken").orElse(System.getenv("PUBLISH_TOKEN") ?: ""))
+    }
+
+    named<org.gradle.api.tasks.bundling.Zip>("buildPlugin") {
+        archiveFileName.set("repobuddy-plugin-${project.version}.zip")
+    }
+}
+
+val releaseChecksums by tasks.registering {
+    dependsOn("buildPlugin", ":repo-buddy-cli:cliDistZip")
+    val output = layout.buildDirectory.file("distributions/SHA256SUMS")
+    outputs.file(output)
+    doLast {
+        val directory = layout.buildDirectory.dir("distributions").get().asFile
+        val artifacts = listOf(
+            directory.resolve("repobuddy-plugin-${project.version}.zip"),
+            directory.resolve("repobuddy-cli-${project.version}.zip")
+        )
+        val lines = artifacts.map { artifact ->
+            check(artifact.isFile) { "Release artifact is missing: $artifact" }
+            val digest = MessageDigest.getInstance("SHA-256").digest(artifact.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            "$digest  ${artifact.name}"
+        }
+        output.get().asFile.writeText(lines.joinToString(System.lineSeparator(), postfix = System.lineSeparator()))
+    }
+}
+
+tasks.register("assembleRelease") {
+    dependsOn(releaseChecksums)
+}
+
+tasks.register("verifyRelease") {
+    dependsOn(releaseChecksums, ":repo-buddy-cli:verifyCliDistribution")
+    doLast {
+        val directory = layout.buildDirectory.dir("distributions").get().asFile
+        val pluginDistribution = directory.resolve("repobuddy-plugin-${project.version}.zip")
+        check(pluginDistribution.isFile) { "Plugin distribution is missing" }
+        check(directory.resolve("repobuddy-cli-${project.version}.zip").isFile) { "CLI distribution is missing" }
+        check(directory.resolve("SHA256SUMS").isFile) { "Release checksums are missing" }
+        ZipFile(pluginDistribution).use { outer ->
+            val pluginJar = outer.entries().asSequence().firstOrNull {
+                it.name.endsWith("/lib/RepoBuddy-${project.version}.jar")
+            } ?: error("Plugin JAR is missing from plugin distribution")
+            val nested = outer.getInputStream(pluginJar).readBytes()
+            var agentFound = false
+            var metadataFound = false
+            ZipInputStream(ByteArrayInputStream(nested)).use { input ->
+                var entry = input.nextEntry
+                while (entry != null) {
+                    if (entry.name == "agent/repoBuddy-agent.jar") agentFound = true
+                    if (entry.name == "META-INF/plugin.xml") metadataFound = true
+                    entry = input.nextEntry
+                }
+            }
+            check(agentFound) { "Embedded RepoBuddy Java agent is missing" }
+            check(metadataFound) { "Plugin metadata is missing" }
+        }
     }
 }

@@ -1,6 +1,4 @@
-plugins {
-    application
-}
+plugins { `java-library` }
 
 group = "com.repoinspector"
 version = rootProject.version
@@ -16,13 +14,4 @@ dependencies {
 }
 
 tasks.withType<JavaCompile> { sourceCompatibility = "17"; targetCompatibility = "17"; options.encoding = "UTF-8" }
-application { mainClass.set("com.repoinspector.mcp.RepoBuddyMcpServer") }
 tasks.test { useJUnitPlatform() }
-
-tasks.jar {
-    dependsOn(":repo-buddy-core:jar", ":repo-buddy-ipc:jar")
-    archiveFileName.set("repo-buddy-mcp.jar")
-    manifest.attributes["Main-Class"] = application.mainClass.get()
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
-}

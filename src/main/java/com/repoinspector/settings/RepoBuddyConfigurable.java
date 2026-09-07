@@ -1,6 +1,7 @@
 package com.repoinspector.settings;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
+import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
@@ -9,6 +10,7 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
 import com.repoinspector.inspections.scan.RepoBuddyIssueService;
 import com.repoinspector.integration.RepoBuddyLocalApiServer;
+import com.repoinspector.integration.RepoBuddyCliSupport;
 import com.repoinspector.runner.startup.AgentConfigCleaner;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -16,6 +18,8 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
+import java.nio.file.Path;
 
 /**
  * Settings page (Settings ▸ Tools ▸ RepoBuddy) exposing the panel-only toggle.
@@ -29,6 +33,7 @@ public final class RepoBuddyConfigurable implements Configurable {
     private JBCheckBox panelOnlyCheckBox;
     private JBCheckBox javaAgentCheckBox;
     private JBCheckBox localIntegrationCheckBox;
+    private JBLabel cliStatusLabel;
 
     @Override
     public @Nls(capitalization = Nls.Capitalization.Title) String getDisplayName() {
@@ -57,6 +62,13 @@ public final class RepoBuddyConfigurable implements Configurable {
                 + "Disabled by default; source access remains limited to bounded context for known issues.</html>");
         integrationHint.setForeground(UIManager.getColor("Label.disabledForeground"));
         integrationHint.setBorder(JBUI.Borders.emptyLeft(24));
+        Path cli = RepoBuddyCliSupport.findOnPath();
+        cliStatusLabel = new JBLabel(cli == null
+                ? "RepoBuddy CLI: not detected on PATH"
+                : "RepoBuddy CLI: " + cli);
+        JButton copyCodexSetup = new JButton("Copy Codex setup command");
+        copyCodexSetup.addActionListener(event -> CopyPasteManager.getInstance()
+                .setContents(new StringSelection(RepoBuddyCliSupport.codexSetupCommand())));
 
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -77,6 +89,12 @@ public final class RepoBuddyConfigurable implements Configurable {
         panel.add(localIntegrationCheckBox);
         panel.add(Box.createVerticalStrut(JBUI.scale(6)));
         panel.add(integrationHint);
+        panel.add(Box.createVerticalStrut(JBUI.scale(14)));
+        cliStatusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        copyCodexSetup.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.add(cliStatusLabel);
+        panel.add(Box.createVerticalStrut(JBUI.scale(6)));
+        panel.add(copyCodexSetup);
 
         reset();
         return panel;
@@ -124,5 +142,6 @@ public final class RepoBuddyConfigurable implements Configurable {
         panelOnlyCheckBox = null;
         javaAgentCheckBox = null;
         localIntegrationCheckBox = null;
+        cliStatusLabel = null;
     }
 }

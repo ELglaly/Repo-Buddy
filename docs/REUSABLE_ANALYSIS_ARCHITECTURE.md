@@ -11,7 +11,10 @@ IntelliJ's `InspectionEngine`. The CLI and MCP server do not contain inspection 
   normalization, scan snapshots, and bounded source context.
 - `repo-buddy-ipc` owns the versioned local protocol, session discovery, and application-service client.
 - `repo-buddy-cli` owns argument parsing, human/JSON rendering, and process exit codes.
-- `repo-buddy-mcp` owns MCP schemas and request/error adaptation only.
+- `repo-buddy-mcp` owns MCP schemas and request/error adaptation only. It is an internal library
+  bundled into the sole executable distribution; users start it with `repobuddy mcp`.
+- `repo-buddy-cli` owns the canonical `repobuddy` command, environment diagnostics, client setup,
+  human/JSON presentation, and the cross-platform release distribution.
 
 ## Finding lifecycle
 

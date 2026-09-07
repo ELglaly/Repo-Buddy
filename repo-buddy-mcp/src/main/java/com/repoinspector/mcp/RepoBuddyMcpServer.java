@@ -24,7 +24,7 @@ public final class RepoBuddyMcpServer {
         new RepoBuddyMcpServer().run();
     }
 
-    void run() throws Exception {
+    public void run() throws Exception {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -166,7 +166,7 @@ public final class RepoBuddyMcpServer {
         JsonObject capabilities = new JsonObject();
         JsonObject tools = new JsonObject(); tools.addProperty("listChanged", false);
         capabilities.add("tools", tools); value.add("capabilities", capabilities);
-        JsonObject info = new JsonObject(); info.addProperty("name", "repobuddy"); info.addProperty("version", "1.0.7");
+        JsonObject info = new JsonObject(); info.addProperty("name", "repobuddy"); info.addProperty("version", RepoBuddyVersion.current());
         value.add("serverInfo", info);
         return value;
     }

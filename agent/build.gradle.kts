@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.repoinspector"
-version = "1.0.0"
+version = rootProject.version
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17

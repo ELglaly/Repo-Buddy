@@ -17,3 +17,9 @@ dependencies {
 tasks.withType<JavaCompile> { sourceCompatibility = "17"; targetCompatibility = "17"; options.encoding = "UTF-8" }
 
 tasks.test { useJUnitPlatform() }
+
+tasks.jar {
+    manifest.attributes["Implementation-Version"] = project.version.toString()
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}

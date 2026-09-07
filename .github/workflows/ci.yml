@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test and package CLI
+        shell: bash
+        run: ./gradlew :repo-buddy-cli:test :repo-buddy-mcp:test :repo-buddy-cli:cliDistZip
+      - name: Smoke-test Unix launcher
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p "build/CLI smoke with spaces"
+          unzip -q build/distributions/repobuddy-cli-*.zip -d "build/CLI smoke with spaces"
+          "build/CLI smoke with spaces/bin/repobuddy" version
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | "build/CLI smoke with spaces/bin/repobuddy" mcp
+      - name: Smoke-test Windows launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Expand-Archive (Get-Item build/distributions/repobuddy-cli-*.zip) -DestinationPath 'build/CLI smoke with spaces'
+          & 'build/CLI smoke with spaces/bin/repobuddy.bat' version
+          '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | & 'build/CLI smoke with spaces/bin/repobuddy.bat' mcp
+
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test and build plugin
+        run: ./gradlew test buildPlugin verifyPluginProjectConfiguration

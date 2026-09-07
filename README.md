@@ -164,6 +164,12 @@ then also configurable under **Settings → Editor → Inspections → RepoBuddy
 3. Search for **RepoBuddy**
 4. Click **Install** and restart the IDE
 
+### Install the companion CLI
+
+Download `repobuddy-cli-<version>.zip` from the same RepoBuddy release, extract it to a stable
+location, and add its `bin` directory to `PATH`. Then run `repobuddy setup`. The CLI requires Java
+17 or newer and does not require Gradle.
+
 ### Build from Source
 
 **Prerequisites:**
@@ -243,14 +249,17 @@ Right-click anywhere inside a Spring MVC controller method → **Trace Repositor
 
 ## Architecture
 
-RepoBuddy keeps the IntelliJ plugin at the Gradle root and separates reusable integration modules:
+RepoBuddy keeps the IntelliJ plugin at the Gradle root and separates reusable integration modules.
+The MCP adapter is an internal library bundled into the single CLI executable:
 
 ```text
-repo-buddy-core  <- repo-buddy-ipc <- repo-buddy-cli
-        ^                 ^
-        |                 +---------- repo-buddy-mcp
-        |
-IntelliJ plugin -> RepoBuddyIssueService -> existing PSI inspections
+repo-buddy-cli -> repo-buddy-mcp -> repo-buddy-ipc -> IntelliJ loopback bridge
+       |                |                |                    |
+       +----------------+----------> repo-buddy-core          v
+                                                    RepoBuddyIssueService
+                                                             |
+                                                             v
+                                                    existing PSI inspections
 ```
 
 The existing embedded `agent` remains dedicated to repository execution and SQL capture.
@@ -322,45 +331,31 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 
 ### RepoBuddy CLI
 
-The CLI exposes the same inspection findings collected by the IntelliJ plugin. Full scans require the
-project to be open in IntelliJ. Enable **Settings | Tools | RepoBuddy | Enable local CLI and MCP access**
-first; the integration is disabled by default.
+Download `repobuddy-cli-<version>.zip` from the matching release, extract it to a stable directory,
+and add its `bin` directory to `PATH`. The distribution contains one implementation and two thin
+platform launchers; neither launcher invokes Gradle or refers to `build/libs`.
 
-Build the runnable JAR:
+Open the Spring project in IntelliJ and enable **Settings | Tools | RepoBuddy | Enable local CLI and
+MCP access**, then run:
 
-```powershell
-.\gradlew.bat :repo-buddy-cli:build
-java -jar .\repo-buddy-cli\build\libs\repo-buddy-cli.jar scan
+```text
+repobuddy setup
+repobuddy check
+repobuddy check --changed
+repobuddy status
+repobuddy doctor
 ```
 
-On macOS or Linux:
+`check` requests all RepoBuddy findings. `check --changed` reports only findings introduced by the
+current Git changes and fails clearly when Git context is unavailable. Use `--project <directory>`
+from outside the project; otherwise RepoBuddy walks upward from the current directory to the nearest
+Git, Maven, or Gradle root.
 
-```bash
-./gradlew :repo-buddy-cli:build
-java -jar repo-buddy-cli/build/libs/repo-buddy-cli.jar scan
-```
-
-Commands:
-
-```bash
-repobuddy scan
-repobuddy scan --format json
-repobuddy issues --severity HIGH
-repobuddy issue RB-NPLUS1-15ac8d
-repobuddy context RB-NPLUS1-15ac8d --lines 10
-repobuddy rules
-repobuddy project-info --format json
-repobuddy projects
-```
-
-`scan` prints a summary rather than every issue. Use `issues` for details and its `--severity`,
-`--minimum-severity`, `--rule`, `--file`, `--limit`, `--offset`, and `--scan-id` filters. JSON is
-written to stdout and diagnostics to stderr. Issue pages default to 50 and are capped at 200.
-
-Scan exit codes are `0` for success below the selected threshold and `1` when findings meet
-`--fail-on` (default `any`). Codes `2`–`8` cover invalid arguments, unsupported projects, analysis
-failure, unavailable IntelliJ integration, authentication failure, disposed projects, and internal
-errors respectively.
+Advanced read-only commands remain available through the same executable: `issues`, `issue`,
+`context`, `rules`, `project-info`, and `projects`. JSON is written to stdout with `--format json`;
+diagnostics are written to stderr. Exit code `1` means the selected `--fail-on` threshold was met.
+Codes `2`–`8` cover command, project, analysis, integration, authentication, lifecycle, and internal
+failures.
 
 ### AI agent and MCP integration
 
@@ -377,101 +372,37 @@ Open the target Spring project in IntelliJ and enable:
 The project must remain open while the agent is using the MCP server. The integration is disabled
 by default.
 
-#### Build the server
+#### Register the server
 
-Run these build commands from the RepoBuddy checkout (the directory containing
-`gradlew.bat`), not from the Spring application repository. The MCP client can later be registered
-from the application repository.
+The MCP server is part of the same CLI distribution and starts with `repobuddy mcp`. MCP clients
+normally start this process themselves; do not leave a separate server running in a terminal.
 
-```bash
-./gradlew :repo-buddy-mcp:build
-java -jar repo-buddy-mcp/build/libs/repo-buddy-mcp.jar
+#### Claude Code
+
+Print a copy-and-paste command containing the absolute Java and packaged RepoBuddy JAR paths:
+
+```text
+repobuddy setup claude
 ```
 
-On Windows:
-
-```powershell
-.\gradlew.bat :repo-buddy-mcp:build
-java -jar .\repo-buddy-mcp\build\libs\repo-buddy-mcp.jar
-```
-
-The `java -jar` command is the server process that MCP clients start for you; normally you do not
-run it in a separate terminal after registering it.
-
-For a client-device setup, add the RepoBuddy checkout directory to that device's `PATH` and use the
-`repobuddy-mcp` launcher included at the repository root. It resolves the JAR relative to itself, so
-the MCP configuration contains no developer-specific absolute path. Build the JAR once on that
-device first.
-
-#### Claude Code (copy and paste)
-
-Run this command from the application repository that Claude will edit, after `repobuddy-mcp` is on
-the client device's `PATH`:
-
-```powershell
-claude mcp add --scope project --transport stdio repobuddy -- `
-  repobuddy-mcp
-```
-
-Check the registration:
-
-```powershell
-claude mcp list
-```
-
-The project-scoped registration keeps RepoBuddy attached to the repository where the command was
-run. Claude Code must also be started from that repository (or given that repository as its
-working directory).
+RepoBuddy does not modify Claude configuration itself.
 
 #### Codex CLI
 
-If your Codex CLI provides the `mcp` command, run this from the application repository:
+Configure Codex through its official CLI:
 
-```powershell
-codex mcp add repobuddy -- `
-  repobuddy-mcp
+```text
+repobuddy setup codex
 ```
 
-Verify it with:
-
-```powershell
-codex mcp list
-```
-
-If your Codex build does not include `codex mcp`, add the equivalent stdio server through its MCP
-settings using the command `java`, argument `-jar`, the absolute RepoBuddy JAR path, and the Spring
-project as the working directory. The same server definition is:
-
-```json
-{
-  "mcpServers": {
-    "repobuddy": {
-      "command": "repobuddy-mcp",
-      "args": [],
-      "cwd": "C:\\path\\to\\your\\spring-project"
-    }
-  }
-}
-```
+Use `--dry-run` to inspect the command. RepoBuddy refuses to overwrite an existing `repobuddy`
+registration unless `--replace` is supplied. It never edits Codex configuration files directly.
 
 #### Other MCP clients
 
-For clients with a JSON MCP configuration, add the following server entry. Preserve any existing
-servers in the file and add `repobuddy` alongside them:
-
-```json
-{
-  "mcpServers": {
-    "repobuddy": {
-      "command": "java",
-      "args": ["-jar", "/absolute/path/to/repo-buddy-mcp.jar"],
-      "cwd": "/absolute/path/to/your/project"
-    }
-  }
-}
-```
-
-On Windows, escape backslashes in JSON paths, for example `C:\\tools\\repo-buddy-mcp.jar`.
+Run `repobuddy setup generic` to print JSON containing the exact absolute command and arguments for
+this installed distribution. Merge the generated `repobuddy` entry into the client's existing MCP
+configuration; RepoBuddy does not rewrite that file.
 
 It exposes `repobuddy_list_projects`, `repobuddy_scan_project`, `repobuddy_list_issues`,
 `repobuddy_get_issue`, `repobuddy_get_issue_context`, `repobuddy_get_project_info`, and
@@ -520,7 +451,7 @@ source, applies fixes, reads arbitrary paths, or exposes environment variables a
 RepoBuddy itself does not upload source. A connected AI client may send explicitly retrieved findings
 or source context to its configured AI provider; review that client's privacy settings.
 
-If a scan reports `REPOBUDDY_IDE_NOT_RUNNING`, open the matching project in IntelliJ and enable local
+If a check reports `REPOBUDDY_IDE_NOT_RUNNING`, open the matching project in IntelliJ and enable local
 CLI/MCP access. For MCP, call `repobuddy_list_projects` and pass the returned `id` as `projectId`.
 `REPOBUDDY_PROJECT_NOT_FOUND` means the selector was not a known project; `REPOBUDDY_PROJECT_AMBIGUOUS`
 means an exact project ID is required.
@@ -528,6 +459,13 @@ means an exact project ID is required.
 ---
 
 ## Changelog
+
+### Next release
+
+- Unified CLI: `repobuddy setup`, `repobuddy check`, `repobuddy check --changed`, and `repobuddy mcp`
+- Cross-platform CLI release ZIP with no Gradle dependency for end users
+- Environment diagnostics and official Codex CLI registration
+- Dedicated `repobuddy-mcp` and checkout build launchers removed
 
 ### 1.0.7
 - Prevented RepoBuddy from persisting machine-specific `-javaagent` paths in shared run configurations
@@ -588,6 +526,18 @@ git clone https://github.com/elglaly/RepoBuddy.git
 cd RepoBuddy
 ./gradlew runIde   # launches a sandboxed IntelliJ with the plugin installed
 ```
+
+Developer verification uses the root Gradle Wrapper:
+
+```bash
+./gradlew test
+./gradlew buildPlugin
+./gradlew :repo-buddy-cli:cliDistZip
+./gradlew verifyRelease
+```
+
+These are contributor commands. End users install the release ZIP and run `repobuddy`; they do not
+invoke Gradle.
 
 ### Submitting a Pull Request
 

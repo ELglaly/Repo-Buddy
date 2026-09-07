@@ -104,7 +104,7 @@ public final class IntelliJRepoBuddyApplicationService implements RepoBuddyAppli
         return CompletableFuture.completedFuture(new RepoBuddyProjectInfo("1", projectId(), project.getName(),
                 root.toString(), build, ProjectRootManager.getInstance(project).getProjectSdk() == null ? null
                         : ProjectRootManager.getInstance(project).getProjectSdk().getVersionString(),
-                boot, jpa, frameworks, RepoBuddyRules.all().stream().map(RepoBuddyRule::id).toList(), "1.0.7", true));
+                boot, jpa, frameworks, RepoBuddyRules.all().stream().map(RepoBuddyRule::id).toList(), RepoBuddyVersion.current(), true));
     }
 
     @Override
@@ -237,7 +237,7 @@ public final class IntelliJRepoBuddyApplicationService implements RepoBuddyAppli
             String id = requested == null ? latestScanId : requested;
             Snapshot value = id == null ? null : snapshots.get(id);
             if (value == null) throw new RepoBuddyException(RepoBuddyErrorCode.REPOBUDDY_SCAN_NOT_FOUND,
-                    "No matching scan is available; run 'repobuddy scan' first");
+                    "No matching scan is available; run 'repobuddy check' first");
             return value;
         }
     }
