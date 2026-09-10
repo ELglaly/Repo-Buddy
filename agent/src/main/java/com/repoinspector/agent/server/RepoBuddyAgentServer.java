@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Lightweight HTTP server for the RepoBuddy agent.
@@ -35,11 +36,14 @@ public class RepoBuddyAgentServer implements InitializingBean, DisposableBean {
 
     /** Temp-file name written by the agent and read by the plugin. */
     public static final String PORT_FILE_NAME = "repoBuddy-agent.port";
+    private static final int MAX_REQUEST_BYTES = 1_048_576;
+    private static final int MAX_RESPONSE_BYTES = 4 * 1_048_576;
 
     private final RepoExecutionService service;
     private final ObjectMapper mapper;
     private HttpServer server;
     private Path portFile;
+    private ExecutorService executor;
 
     public RepoBuddyAgentServer(RepoExecutionService service) {
         this.service = service;
@@ -56,11 +60,12 @@ public class RepoBuddyAgentServer implements InitializingBean, DisposableBean {
         // Port 0 → OS picks any free port; impossible to clash with Tomcat.
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/repoinspector/execute", this::handleExecute);
-        server.setExecutor(Executors.newSingleThreadExecutor(r -> {
+        executor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "repoBuddy-agent");
             t.setDaemon(true);
             return t;
-        }));
+        });
+        server.setExecutor(executor);
         server.start();
 
         int actualPort = ((InetSocketAddress) server.getAddress()).getPort();
@@ -78,6 +83,7 @@ public class RepoBuddyAgentServer implements InitializingBean, DisposableBean {
     @Override
     public void destroy() {
         if (server != null) server.stop(0);
+        if (executor != null) executor.shutdownNow();
         if (portFile != null) {
             try { Files.deleteIfExists(portFile); } catch (Exception ignored) {}
         }
@@ -92,11 +98,19 @@ public class RepoBuddyAgentServer implements InitializingBean, DisposableBean {
                 return;
             }
 
-            byte[] body          = exchange.getRequestBody().readAllBytes();
+            byte[] body = exchange.getRequestBody().readNBytes(MAX_REQUEST_BYTES + 1);
+            if (body.length > MAX_REQUEST_BYTES) {
+                sendError(exchange, 413, "Request body is too large");
+                return;
+            }
             ExecutionRequest req = mapper.readValue(body, ExecutionRequest.class);
             ExecutionResult result = service.execute(req);
 
             byte[] response = mapper.writeValueAsBytes(result);
+            if (response.length > MAX_RESPONSE_BYTES) {
+                sendError(exchange, 413, "Execution result is too large");
+                return;
+            }
             exchange.getResponseHeaders().add("Content-Type", "application/json; charset=UTF-8");
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);

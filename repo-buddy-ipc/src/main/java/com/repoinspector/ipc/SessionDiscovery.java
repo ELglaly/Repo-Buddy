@@ -15,15 +15,24 @@ import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.EnumSet;
 
 public final class SessionDiscovery {
+    /**
+     * Test-only/session-host override. Keeping it a JVM property lets a fixture-hosted IDE and
+     * its child CLI share an isolated descriptor directory without touching user cache state.
+     */
+    public static final String SESSION_DIRECTORY_PROPERTY = "repobuddy.session.directory";
     private SessionDiscovery() {}
 
     public static Path directory() {
+        String overridden = System.getProperty(SESSION_DIRECTORY_PROPERTY);
+        if (overridden != null && !overridden.isBlank()) return Path.of(overridden).toAbsolutePath().normalize();
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             String local = System.getenv("LOCALAPPDATA");
@@ -60,10 +69,16 @@ public final class SessionDiscovery {
         return result;
     }
 
-    public static SessionDescriptor select(Path workingDirectory, String selector) {
-        List<SessionDescriptor> candidates = readAll().stream()
+    /** Returns one reachable session for each logical IntelliJ project. */
+    public static List<SessionDescriptor> readProjects() {
+        return distinctProjects(readAll().stream()
                 .filter(value -> IpcRequest.VERSION.equals(value.protocolVersion()))
                 .filter(value -> ProcessHandle.of(value.pid()).map(ProcessHandle::isAlive).orElse(false))
+                .toList());
+    }
+
+    public static SessionDescriptor select(Path workingDirectory, String selector) {
+        List<SessionDescriptor> candidates = readProjects().stream()
                 .filter(value -> selector == null || matches(value, selector))
                 .filter(value -> selector != null || isWithin(workingDirectory, Path.of(value.projectRoot())))
                 .toList();
@@ -74,6 +89,14 @@ public final class SessionDiscovery {
         if (candidates.size() > 1) throw new RepoBuddyException(RepoBuddyErrorCode.REPOBUDDY_PROJECT_AMBIGUOUS,
                 "Multiple RepoBuddy projects match selector '" + selector + "'; use the id from repobuddy_list_projects");
         return candidates.get(0);
+    }
+
+    static List<SessionDescriptor> distinctProjects(List<SessionDescriptor> sessions) {
+        Map<ProjectIdentity, SessionDescriptor> projects = new LinkedHashMap<>();
+        for (SessionDescriptor session : sessions) {
+            projects.put(new ProjectIdentity(session.projectId(), normalizedRoot(session.projectRoot())), session);
+        }
+        return List.copyOf(projects.values());
     }
 
     static boolean matches(SessionDescriptor value, String selector) {
@@ -98,6 +121,14 @@ public final class SessionDiscovery {
         try { return child.toRealPath().startsWith(root.toRealPath()); }
         catch (IOException ignored) { return child.toAbsolutePath().normalize().startsWith(root.toAbsolutePath().normalize()); }
     }
+
+    private static String normalizedRoot(String root) {
+        try { return Path.of(root).toRealPath().toString(); }
+        catch (IOException ignored) { return Path.of(root).toAbsolutePath().normalize().toString(); }
+        catch (java.nio.file.InvalidPathException ignored) { return root; }
+    }
+
+    private record ProjectIdentity(String projectId, String root) {}
 
     private static void restrict(Path path, boolean directory) throws IOException {
         try {

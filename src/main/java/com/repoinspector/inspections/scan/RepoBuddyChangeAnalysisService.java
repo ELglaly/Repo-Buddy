@@ -195,7 +195,8 @@ public final class RepoBuddyChangeAnalysisService {
         if (baselineCache.size() >= 256 && !baselineCache.containsKey(key)) baselineCache.clear();
         return baselineCache.computeIfAbsent(key, ignored -> ReadAction.compute(() -> {
             String name = candidate.beforePath() == null ? Path.of(logicalPath).getFileName().toString() : candidate.beforePath().getFileName().toString();
-            PsiFile psi = PsiFileFactory.getInstance(project).createFileFromText(name, JavaFileType.INSTANCE, text);
+            PsiFile psi = PsiFileFactory.getInstance(project).createFileFromText(
+                    name, JavaFileType.INSTANCE, text, System.currentTimeMillis(), true);
             return remap(scanner.scanFile(project, psi), logicalPath, null);
         }));
     }

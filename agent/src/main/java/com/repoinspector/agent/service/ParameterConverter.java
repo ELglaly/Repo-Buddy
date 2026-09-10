@@ -61,9 +61,6 @@ final class ParameterConverter {
         this.objectMapper = objectMapper;
     }
 
-    // =========================================================================
-    // Public API
-    // =========================================================================
 
     /**
      * Converts each {@link ParameterValue} to the Java type declared by {@code method}.
@@ -83,9 +80,6 @@ final class ParameterConverter {
         return args;
     }
 
-    // =========================================================================
-    // Core dispatch
-    // =========================================================================
 
     /**
      * Converts {@code value} to an instance of {@code type}.
@@ -141,32 +135,11 @@ final class ParameterConverter {
         return objectMapper.readValue(value, type);
     }
 
-    // =========================================================================
-    // Pageable / PageRequest — fully reflective construction
-    // =========================================================================
 
-    /**
-     * Returns {@code true} when {@code type} or any interface in its hierarchy has
-     * the fully-qualified name {@link #PAGEABLE_FQN} or {@link #PAGE_REQUEST_FQN}.
-     *
-     * <p>Walking the hierarchy instead of using {@code Foo.class.isAssignableFrom}
-     * avoids the classloader isolation problem described in the class Javadoc.
-     *
-     * @param type the class to test; never {@code null}
-     * @return {@code true} if the type is assignable to Pageable
-     */
     private static boolean isPageableType(Class<?> type) {
         return typeNameMatches(type, PAGEABLE_FQN) || typeNameMatches(type, PAGE_REQUEST_FQN);
     }
 
-    /**
-     * Walks the full type hierarchy (superclasses + interfaces, recursively) to find
-     * a class whose {@link Class#getName()} equals {@code targetFqn}.
-     *
-     * @param type      starting class; {@code null} terminates the walk
-     * @param targetFqn fully-qualified class name to find
-     * @return {@code true} on first match
-     */
     private static boolean typeNameMatches(Class<?> type, String targetFqn) {
         if (type == null) return false;
         if (type.getName().equals(targetFqn)) return true;
@@ -213,13 +186,6 @@ final class ParameterConverter {
         return ofMethod.invoke(null, page, size, sort);
     }
 
-    /**
-     * Constructs a {@code Sort.unsorted()} instance using the app's classloader.
-     *
-     * @param cl the application classloader
-     * @return a {@code Sort} instance; never {@code null}
-     * @throws Exception on reflection failure
-     */
     private static Object buildUnsortedSort(ClassLoader cl) throws Exception {
         Class<?> sortClass = cl.loadClass(SORT_FQN);
         return sortClass.getMethod("unsorted").invoke(null);
@@ -268,15 +234,6 @@ final class ParameterConverter {
         return buildUnsortedSort(cl);
     }
 
-    /**
-     * Builds a {@code Sort} from a list of {@code "property[,direction]"} spec strings.
-     * Defaults to {@code ASC} when the direction token is absent or unrecognised.
-     *
-     * @param cl    the application classloader
-     * @param specs one or more sort spec strings
-     * @return a {@code Sort} instance; {@code Sort.unsorted()} when {@code specs} is empty
-     * @throws Exception on reflection failure
-     */
     private Object buildSortFromSpecs(ClassLoader cl, List<String> specs) throws Exception {
         Class<?> sortClass  = cl.loadClass(SORT_FQN);
         Class<?> dirClass   = cl.loadClass(SORT_DIR_FQN);
@@ -337,9 +294,6 @@ final class ParameterConverter {
         return buildSortFromSpecs(cl, specs);
     }
 
-    // =========================================================================
-    // Enum resolver
-    // =========================================================================
 
     /**
      * Resolves a string value to one of {@code enumType}'s declared constants.
@@ -393,23 +347,7 @@ final class ParameterConverter {
         return constants[0];
     }
 
-    // =========================================================================
-    // Class<T> projection
-    // =========================================================================
 
-    /**
-     * Resolves a projection class from a fully-qualified class name string.
-     *
-     * <p>Spring Data projection methods accept a {@code Class<T>} to choose the result view:
-     * {@code <T> T findById(Long id, Class<T> type)}.  The plugin sends the FQN as a plain
-     * string (e.g. {@code "com.example.UserDto"}); this method loads it from the application
-     * classloader so the correct type is passed to the repository method.
-     *
-     * @param appCl the application classloader (from the adjacent parameter's class)
-     * @param value the FQN string supplied by the plugin UI; may be null/blank
-     * @return the resolved {@link Class}, or {@code null} when value is blank
-     * @throws ClassNotFoundException when the named class cannot be found
-     */
     private static Class<?> resolveProjectionClass(ClassLoader appCl, String value)
             throws ClassNotFoundException {
         if (value == null || value.isBlank()) return null;
@@ -418,9 +356,6 @@ final class ParameterConverter {
         return Class.forName(fqn, false, cl);
     }
 
-    // =========================================================================
-    // Helpers
-    // =========================================================================
 
     /**
      * Returns the {@link ClassLoader} that loaded {@code type}, falling back to the

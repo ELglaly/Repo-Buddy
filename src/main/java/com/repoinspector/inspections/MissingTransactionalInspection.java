@@ -4,24 +4,19 @@ import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ProblemsHolder;
 import com.intellij.codeInspection.options.OptPane;
 import com.intellij.psi.JavaElementVisitor;
-import com.intellij.psi.JavaRecursiveElementVisitor;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiCodeBlock;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementVisitor;
 import com.intellij.psi.PsiIdentifier;
 import com.intellij.psi.PsiMethod;
-import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiModifier;
 import com.repoinspector.constants.SpringAnnotations;
-import com.repoinspector.inspections.detector.DataAccessCalls;
-import com.repoinspector.inspections.detector.TransactionWriteSignals;
+import com.repoinspector.inspections.detector.TransactionContextDetector;
 import com.repoinspector.inspections.fix.AddTransactionalFix;
-import com.repoinspector.model.OperationType;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.EnumSet;
 
 import static com.intellij.codeInspection.options.OptPane.checkbox;
 import static com.intellij.codeInspection.options.OptPane.pane;
@@ -41,8 +36,8 @@ import static com.intellij.codeInspection.options.OptPane.pane;
  *   <li><b>Repository write calls</b> (opt-in) — a method that calls repository
  *       {@code save}/{@code delete}/… without {@code @Transactional}.</li>
  *   <li><b>Transitive writes through private helpers</b> (opt-in) — a method with no direct
- *       write that delegates to a private same-class method which writes; Spring cannot make
- *       the private helper transactional, so the public entry point must be annotated.</li>
+ *       write that delegates through a bounded graph of resolvable production-source methods,
+ *       preserving proven imperative and reactive transaction contexts.</li>
  * </ul>
  *
  * <p>Static methods that write are reported with a distinct message (and no quick fix)
@@ -65,13 +60,13 @@ public class MissingTransactionalInspection extends RepoBuddyLocalInspection {
                 checkbox("includeRepositoryWriteCalls",
                         "Also flag methods that call repository save/delete/update without @Transactional"),
                 checkbox("analyzeCalledMethods",
-                        "Also flag methods that write only through a private helper method")
+                        "Also analyze a bounded graph of helper methods in project production sources")
         );
     }
 
     @Override
     public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
-        if (!shouldAnalyze()) return PsiElementVisitor.EMPTY_VISITOR;
+        if (!shouldAnalyze(holder.getFile())) return PsiElementVisitor.EMPTY_VISITOR;
         return new JavaElementVisitor() {
             @Override
             public void visitMethod(@NotNull PsiMethod method) {
@@ -93,7 +88,10 @@ public class MissingTransactionalInspection extends RepoBuddyLocalInspection {
 
                 boolean isStatic = method.hasModifierProperty(PsiModifier.STATIC);
 
-                if (bodyHasDataWrite(body)) {
+                EnumSet<TransactionContextDetector.WritePath> uncovered =
+                        new TransactionContextDetector(includeRepositoryWriteCalls, analyzeCalledMethods)
+                                .analyze(method);
+                if (uncovered.contains(TransactionContextDetector.WritePath.DIRECT_DATA)) {
                     if (isStatic) {
                         registerStatic(holder, method,
                                 "Static method '" + method.getName() + "' performs a database write but cannot "
@@ -107,7 +105,8 @@ public class MissingTransactionalInspection extends RepoBuddyLocalInspection {
                     return;
                 }
 
-                if (includeRepositoryWriteCalls && bodyHasRepositoryWrite(body)) {
+                if (includeRepositoryWriteCalls
+                        && uncovered.contains(TransactionContextDetector.WritePath.DIRECT_REPOSITORY)) {
                     if (isStatic) {
                         registerStatic(holder, method,
                                 "Static method '" + method.getName() + "' calls repository write operations but "
@@ -121,11 +120,12 @@ public class MissingTransactionalInspection extends RepoBuddyLocalInspection {
                     return;
                 }
 
-                if (analyzeCalledMethods && !isStatic && callsPrivateWriter(method)) {
+                if (analyzeCalledMethods && !isStatic
+                        && uncovered.contains(TransactionContextDetector.WritePath.HELPER)) {
                     register(holder, method,
                             "Method '" + method.getName() + "' performs a database write through a private helper "
-                                    + "but is not @Transactional. Spring cannot make the helper transactional, so "
-                                    + "annotate this entry point to wrap the writes in one transaction.");
+                                    + "or project-source helper but is not @Transactional. "
+                                    + "Annotate this entry point to wrap the writes in one transaction.");
                 }
             }
         };
@@ -161,91 +161,4 @@ public class MissingTransactionalInspection extends RepoBuddyLocalInspection {
         return false;
     }
 
-    /**
-     * True if {@code method} performs a write only by delegating to a private same-class
-     * method (transitively). Private helpers cannot be proxied, so the public caller is the
-     * element that needs {@code @Transactional}.
-     */
-    private boolean callsPrivateWriter(@NotNull PsiMethod method) {
-        PsiClass owner = method.getContainingClass();
-        if (owner == null) return false;
-        return scanPrivateCallees(method, owner, new HashSet<>());
-    }
-
-    private boolean scanPrivateCallees(@NotNull PsiMethod method, @NotNull PsiClass owner,
-                                       @NotNull Set<PsiMethod> visited) {
-        PsiCodeBlock body = method.getBody();
-        if (body == null) return false;
-        boolean[] found = {false};
-        body.accept(new JavaRecursiveElementVisitor() {
-            @Override
-            public void visitMethodCallExpression(@NotNull PsiMethodCallExpression call) {
-                super.visitMethodCallExpression(call);
-                if (found[0]) return;
-                PsiMethod callee = call.resolveMethod();
-                if (callee == null || !callee.hasModifierProperty(PsiModifier.PRIVATE)) return;
-                if (!owner.equals(callee.getContainingClass())) return;
-                if (!visited.add(callee)) return;
-                PsiCodeBlock calleeBody = callee.getBody();
-                if (calleeBody != null && (bodyHasDataWrite(calleeBody)
-                        || (includeRepositoryWriteCalls && bodyHasRepositoryWrite(calleeBody)))) {
-                    found[0] = true;
-                    return;
-                }
-                if (scanPrivateCallees(callee, owner, visited)) found[0] = true;
-            }
-        });
-        return found[0];
-    }
-
-    private static boolean bodyHasDataWrite(@NotNull PsiCodeBlock body) {
-        boolean[] found = {false};
-        body.accept(new JavaRecursiveElementVisitor() {
-            @Override
-            public void visitMethodCallExpression(@NotNull PsiMethodCallExpression call) {
-                super.visitMethodCallExpression(call);
-                if (found[0]) return;
-                String name = call.getMethodExpression().getReferenceName();
-                if (name == null) return;
-                PsiMethod resolved = call.resolveMethod();
-                if (resolved == null) return;
-                PsiClass owner = resolved.getContainingClass();
-                if (owner == null) return;
-                String fqn = owner.getQualifiedName();
-                if (TransactionWriteSignals.isJpaWriteMethod(name)
-                        && TransactionWriteSignals.isJpaPersistenceType(fqn)) {
-                    found[0] = true;
-                } else if (TransactionWriteSignals.isHibernateWriteMethod(name)
-                        && TransactionWriteSignals.isHibernateSessionType(fqn)) {
-                    found[0] = true;
-                } else if (TransactionWriteSignals.isJdbcWriteMethod(name)
-                        && TransactionWriteSignals.isJdbcTemplateType(fqn)) {
-                    found[0] = true;
-                }
-            }
-        });
-        return found[0];
-    }
-
-    private static boolean bodyHasRepositoryWrite(@NotNull PsiCodeBlock body) {
-        boolean[] found = {false};
-        body.accept(new JavaRecursiveElementVisitor() {
-            @Override
-            public void visitMethodCallExpression(@NotNull PsiMethodCallExpression call) {
-                super.visitMethodCallExpression(call);
-                if (found[0]) return;
-                String name = call.getMethodExpression().getReferenceName();
-                if (name == null) return;
-                PsiMethod resolved = call.resolveMethod();
-                if (resolved == null) return;
-                PsiClass owner = resolved.getContainingClass();
-                if (owner == null || !DataAccessCalls.isSpringDataRepository(owner)) return;
-                if (resolved.hasAnnotation(SpringAnnotations.MODIFYING)
-                        || OperationType.fromMethodName(name) == OperationType.WRITE) {
-                    found[0] = true;
-                }
-            }
-        });
-        return found[0];
-    }
 }

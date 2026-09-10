@@ -46,6 +46,12 @@ class RepoBuddyCliTest {
         assertEquals(0, new CommandLine(new RepoBuddyCli()).execute("version"));
     }
 
+    @Test void claudeSetupAcceptsDryRunAndReplaceOptions() {
+        CommandLine setup = new CommandLine(new RepoBuddyCli()).getSubcommands().get("setup");
+        assertTrue(setup.getCommandSpec().optionsMap().containsKey("--dry-run"));
+        assertTrue(setup.getCommandSpec().optionsMap().containsKey("--replace"));
+    }
+
     @Test void projectDetectionWalksFromNestedDirectoryToGitRoot() throws Exception {
         Path repository = temporaryDirectory.resolve("project");
         Path nested = repository.resolve("src/main/java");

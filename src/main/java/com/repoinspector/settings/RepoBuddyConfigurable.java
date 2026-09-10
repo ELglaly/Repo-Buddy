@@ -1,7 +1,6 @@
 package com.repoinspector.settings;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
-import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
@@ -10,7 +9,8 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
 import com.repoinspector.inspections.scan.RepoBuddyIssueService;
 import com.repoinspector.integration.RepoBuddyLocalApiServer;
-import com.repoinspector.integration.RepoBuddyCliSupport;
+import com.repoinspector.integration.RepoBuddyCliManager;
+import com.repoinspector.integration.RepoBuddyIntegrationUi;
 import com.repoinspector.runner.startup.AgentConfigCleaner;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
@@ -18,8 +18,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.datatransfer.StringSelection;
-import java.nio.file.Path;
 
 /**
  * Settings page (Settings ▸ Tools ▸ RepoBuddy) exposing the panel-only toggle.
@@ -34,6 +32,8 @@ public final class RepoBuddyConfigurable implements Configurable {
     private JBCheckBox javaAgentCheckBox;
     private JBCheckBox localIntegrationCheckBox;
     private JBLabel cliStatusLabel;
+    private JButton installCliButton;
+    private JButton openInstallationButton;
 
     @Override
     public @Nls(capitalization = Nls.Capitalization.Title) String getDisplayName() {
@@ -62,13 +62,29 @@ public final class RepoBuddyConfigurable implements Configurable {
                 + "Disabled by default; source access remains limited to bounded context for known issues.</html>");
         integrationHint.setForeground(UIManager.getColor("Label.disabledForeground"));
         integrationHint.setBorder(JBUI.Borders.emptyLeft(24));
-        Path cli = RepoBuddyCliSupport.findOnPath();
-        cliStatusLabel = new JBLabel(cli == null
-                ? "RepoBuddy CLI: not detected on PATH"
-                : "RepoBuddy CLI: " + cli);
-        JButton copyCodexSetup = new JButton("Copy Codex setup command");
-        copyCodexSetup.addActionListener(event -> CopyPasteManager.getInstance()
-                .setContents(new StringSelection(RepoBuddyCliSupport.codexSetupCommand())));
+        RepoBuddyCliManager cliManager = RepoBuddyCliManager.getInstance();
+        cliStatusLabel = new JBLabel(cliManager.installationStatusText());
+        installCliButton = new JButton(cliManager.installActionText());
+        installCliButton.addActionListener(event -> RepoBuddyIntegrationUi.install(null, this::refreshCliStatus));
+        JButton configureCodex = new JButton("Configure Codex");
+        configureCodex.addActionListener(event -> configureClient(RepoBuddyCliManager.AiClient.CODEX));
+        JButton configureClaude = new JButton("Configure Claude Code");
+        configureClaude.addActionListener(event -> configureClient(RepoBuddyCliManager.AiClient.CLAUDE_CODE));
+        JButton copyConfiguration = new JButton("Copy MCP Configuration");
+        copyConfiguration.addActionListener(event -> copyConfiguration());
+        openInstallationButton = new JButton("Open Installation Folder");
+        openInstallationButton.addActionListener(event -> RepoBuddyIntegrationUi.openInstallationFolder(null));
+        JButton pathSetup = new JButton("Terminal PATH Setup…");
+        pathSetup.addActionListener(event -> RepoBuddyIntegrationUi.showPathGuidance());
+
+        JPanel cliActions = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0));
+        cliActions.add(installCliButton);
+        cliActions.add(configureCodex);
+        cliActions.add(configureClaude);
+        JPanel cliUtilities = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0));
+        cliUtilities.add(copyConfiguration);
+        cliUtilities.add(openInstallationButton);
+        cliUtilities.add(pathSetup);
 
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -91,12 +107,16 @@ public final class RepoBuddyConfigurable implements Configurable {
         panel.add(integrationHint);
         panel.add(Box.createVerticalStrut(JBUI.scale(14)));
         cliStatusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        copyCodexSetup.setAlignmentX(Component.LEFT_ALIGNMENT);
+        cliActions.setAlignmentX(Component.LEFT_ALIGNMENT);
+        cliUtilities.setAlignmentX(Component.LEFT_ALIGNMENT);
         panel.add(cliStatusLabel);
         panel.add(Box.createVerticalStrut(JBUI.scale(6)));
-        panel.add(copyCodexSetup);
+        panel.add(cliActions);
+        panel.add(Box.createVerticalStrut(JBUI.scale(6)));
+        panel.add(cliUtilities);
 
         reset();
+        refreshCliStatus();
         return panel;
     }
 
@@ -143,5 +163,37 @@ public final class RepoBuddyConfigurable implements Configurable {
         javaAgentCheckBox = null;
         localIntegrationCheckBox = null;
         cliStatusLabel = null;
+        installCliButton = null;
+        openInstallationButton = null;
+    }
+
+    private void configureClient(RepoBuddyCliManager.AiClient client) {
+        Project project = RepoBuddyIntegrationUi.chooseProject(installCliButton);
+        if (project == null) return;
+        RepoBuddyIntegrationUi.configure(project, client, () -> {
+            if (localIntegrationCheckBox != null)
+                localIntegrationCheckBox.setSelected(RepoBuddySettings.getInstance().isLocalIntegrationEnabled());
+            refreshCliStatus();
+        });
+    }
+
+    private void copyConfiguration() {
+        Object[] choices = {"Generic / Claude JSON", "Codex TOML"};
+        Object selected = JOptionPane.showInputDialog(installCliButton, "Choose a configuration format:",
+                "Copy RepoBuddy MCP Configuration", JOptionPane.QUESTION_MESSAGE, null, choices, choices[0]);
+        if (selected == null) return;
+        RepoBuddyCliManager.ConfigFormat format = selected.equals(choices[1])
+                ? RepoBuddyCliManager.ConfigFormat.CODEX_TOML
+                : RepoBuddyCliManager.ConfigFormat.GENERIC_JSON;
+        RepoBuddyIntegrationUi.copyConfiguration(null, format, this::refreshCliStatus);
+    }
+
+    private void refreshCliStatus() {
+        if (cliStatusLabel == null) return;
+        RepoBuddyCliManager manager = RepoBuddyCliManager.getInstance();
+        cliStatusLabel.setText(manager.installationStatusText());
+        installCliButton.setText(manager.installActionText());
+        installCliButton.setEnabled(!manager.isInstalledCurrent());
+        openInstallationButton.setEnabled(java.nio.file.Files.isDirectory(manager.installationDirectory()));
     }
 }

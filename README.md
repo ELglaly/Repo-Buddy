@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge&logo=gradle)
-![Version](https://img.shields.io/badge/version-1.0.7-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.8-blue?style=for-the-badge)
 ![IntelliJ](https://img.shields.io/badge/IntelliJ-2023.2%2B-orange?style=for-the-badge&logo=intellij-idea)
 ![Java](https://img.shields.io/badge/Java-17%2B-red?style=for-the-badge&logo=openjdk)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.7%2B-6DB33F?style=for-the-badge&logo=springboot)
@@ -164,11 +164,17 @@ then also configurable under **Settings → Editor → Inspections → RepoBuddy
 3. Search for **RepoBuddy**
 4. Click **Install** and restart the IDE
 
-### Install the companion CLI
+### Install and configure the companion CLI
 
-Download `repobuddy-cli-<version>.zip` from the same RepoBuddy release, extract it to a stable
-location, and add its `bin` directory to `PATH`. Then run `repobuddy setup`. The CLI requires Java
-17 or newer and does not require Gradle.
+The Marketplace plugin bundles the matching RepoBuddy CLI. Open **Settings | Tools | RepoBuddy**
+or **Tools | RepoBuddy Integration**, then choose **Configure Codex** or
+**Configure Claude Code**. RepoBuddy installs the CLI into your user application-data directory,
+enables its authenticated local integration, registers the read-only MCP server through the
+selected client's official CLI, and verifies the result.
+
+Use **Install RepoBuddy CLI** when you only want the command-line tools. Terminal PATH setup is an
+optional guided step; RepoBuddy never edits shell profiles or the Windows user environment.
+The standalone `repobuddy-cli-<version>.zip` remains available for machines without the plugin.
 
 ### Build from Source
 
@@ -264,42 +270,6 @@ repo-buddy-cli -> repo-buddy-mcp -> repo-buddy-ipc -> IntelliJ loopback bridge
 
 The existing embedded `agent` remains dedicated to repository execution and SQL capture.
 
-The detailed boundaries and security model are documented in
-[`docs/REUSABLE_ANALYSIS_ARCHITECTURE.md`](docs/REUSABLE_ANALYSIS_ARCHITECTURE.md).
-
-The original plugin and agent source layout is:
-
-```
-RepoBuddy/
-├── src/                            # IntelliJ plugin module
-│   └── main/java/com/repoinspector/
-│       ├── actions/                # IDE action (right-click menu)
-│       ├── analysis/               # Static analysis services
-│       │   ├── api/                # Service interfaces
-│       │   ├── impl/               # Default implementations
-│       │   ├── CallSiteAnalyzer    # Call site resolution
-│       │   ├── EndpointFinder      # Spring MVC endpoint discovery
-│       │   └── RepositoryOperationClassifier
-│       ├── constants/              # Spring annotation & SQL keyword constants
-│       ├── gutter/                 # Gutter icon marker provider
-│       ├── model/                  # Domain models (CallChainNode, EndpointInfo, …)
-│       ├── runner/                 # Execution subsystem
-│       │   ├── model/              # Request/response DTOs
-│       │   ├── service/            # Parameter extraction, Spring URL resolution
-│       │   ├── startup/            # Runtime agent patcher and legacy-agent cleanup
-│       │   └── ui/                 # Execution popup panels
-│       └── ui/                     # Tool window panels (RepoInspector, CallChain)
-│
-└── agent/                          # Embedded Java agent module
-    └── src/main/java/com/repoinspector/agent/
-        ├── AgentPremain            # Java agent entry point (Premain-Class)
-        ├── config/                 # Spring auto-configuration for agent beans
-        ├── dto/                    # Shared DTOs (ExecutionRequest, ExecutionResult)
-        ├── server/                 # HTTP server (receives execution requests from plugin)
-        ├── service/                # Repository method invocation, parameter conversion
-        └── sql/                    # Hibernate StatementInspector + SQL log store
-```
-
 ### How It Works
 
 ```
@@ -331,12 +301,7 @@ The agent JAR is embedded inside the plugin JAR at `/agent/repoBuddy-agent.jar` 
 
 ### RepoBuddy CLI
 
-Download `repobuddy-cli-<version>.zip` from the matching release, extract it to a stable directory,
-and add its `bin` directory to `PATH`. The distribution contains one implementation and two thin
-platform launchers; neither launcher invokes Gradle or refers to `build/libs`.
-
-Open the Spring project in IntelliJ and enable **Settings | Tools | RepoBuddy | Enable local CLI and
-MCP access**, then run:
+The installation and IntelliJ configuration flow is described above. Once installed, run:
 
 ```text
 repobuddy setup
@@ -365,12 +330,9 @@ current changes.
 
 #### One-time IntelliJ setup
 
-Open the target Spring project in IntelliJ and enable:
-
-**Settings | Tools | RepoBuddy | Enable local CLI and MCP access**
-
-The project must remain open while the agent is using the MCP server. The integration is disabled
-by default.
+The **Configure Codex** and **Configure Claude Code** actions install or update the bundled CLI,
+enable local CLI/MCP access, and verify registration. The target project must remain open while the
+agent uses MCP.
 
 #### Register the server
 
@@ -379,17 +341,19 @@ normally start this process themselves; do not leave a separate server running i
 
 #### Claude Code
 
-Print a copy-and-paste command containing the absolute Java and packaged RepoBuddy JAR paths:
+Configure Claude Code at user scope through its official CLI (or the matching IntelliJ action):
 
 ```text
 repobuddy setup claude
 ```
 
-RepoBuddy does not modify Claude configuration itself.
+Use `--dry-run` to inspect the command. RepoBuddy asks before replacing an existing registration
+from IntelliJ, or requires `--replace` at the command line. It does not directly edit Claude
+configuration files.
 
 #### Codex CLI
 
-Configure Codex through its official CLI:
+Configure Codex through its official CLI (or the matching IntelliJ action):
 
 ```text
 repobuddy setup codex
@@ -405,8 +369,8 @@ this installed distribution. Merge the generated `repobuddy` entry into the clie
 configuration; RepoBuddy does not rewrite that file.
 
 It exposes `repobuddy_list_projects`, `repobuddy_scan_project`, `repobuddy_list_issues`,
-`repobuddy_get_issue`, `repobuddy_get_issue_context`, `repobuddy_get_project_info`, and
-`repobuddy_get_rules`. Change-aware clients can also call `repobuddy_get_issues` with an explicit
+`repobuddy_get_issue`, `repobuddy_get_issue_details`, `repobuddy_get_issue_context`,
+`repobuddy_get_project_info`, `repobuddy_get_rules`, and `repobuddy_get_rule_details`. Change-aware clients can also call `repobuddy_get_issues` with an explicit
 `scope` of `all` or `changed`, and `repobuddy_check_changes`. Use the stable `id` returned by
 `repobuddy_list_projects` as `projectId`;
 the display name is not the project identity. If the MCP process is started inside a project and
@@ -418,7 +382,8 @@ The recommended AI workflow is:
 1. repobuddy_list_projects
 2. repobuddy_scan_project → save scanId
 3. repobuddy_list_issues with scanId, limit <= 25, and offset 0
-4. Repeat with nextOffset while hasMore is true
+4. repobuddy_get_issue for a compact finding summary; call repobuddy_get_issue_details only when explanation or remediation is needed
+5. Repeat with nextOffset while hasMore is true
 ```
 
 For an AI repair loop, call `repobuddy_check_changes`. Stop when `passed` is true. Otherwise use
@@ -436,8 +401,11 @@ Do not modify PRE_EXISTING findings unless I explicitly ask for an all-issues re
 introducedIssueCount is zero, and preserve the intended behavior of the patch.
 ```
 
-Issue pages are deliberately bounded so an AI client does not request hundreds of findings in one
-response. Each page includes `total`, `offset`, `nextOffset`, `hasMore`, and the current `issues`.
+Issue and rule pages are deliberately bounded so an AI client does not request hundreds of results in one
+response. Rule pages accept `limit` and `offset` (1–25) and include `total`, `offset`, `nextOffset`,
+`hasMore`, and compact rule summaries. `repobuddy_get_issue` never includes explanation or remediation;
+use its detail companion for those bounded fields. Detail and source-context responses expose
+`truncated: true` when shortened to stay within the 1 KB MCP response budget.
 MCP delegates to the same application service as the CLI and does not execute shell commands or
 implement analysis.
 
@@ -460,11 +428,13 @@ means an exact project ID is required.
 
 ## Changelog
 
-### Next release
+### 1.0.8
 
 - Unified CLI: `repobuddy setup`, `repobuddy check`, `repobuddy check --changed`, and `repobuddy mcp`
 - Cross-platform CLI release ZIP with no Gradle dependency for end users
 - Environment diagnostics and official Codex CLI registration
+- Read-only MCP tools for projects, scans, issues, context, rules, and change checks
+- Expanded Spring/JPA inspections with project-level findings, production-source filtering, and safer transaction analysis
 - Dedicated `repobuddy-mcp` and checkout build launchers removed
 
 ### 1.0.7

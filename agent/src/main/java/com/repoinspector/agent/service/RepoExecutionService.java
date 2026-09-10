@@ -8,8 +8,6 @@ import com.repoinspector.agent.dto.ExecutionResult;
 import com.repoinspector.agent.sql.SqlLogStore;
 import org.springframework.context.ApplicationContext;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Optional;
@@ -23,6 +21,12 @@ import java.util.Optional;
  * during the invocation are included in the result.
  */
 public class RepoExecutionService {
+
+    /** Keeps one execution response bounded even when a repository returns a very large value. */
+    static final int MAX_SERIALIZED_RESULT_CHARS = 1_048_576;
+    static final int MAX_STACK_TRACE_CAUSES = 4;
+    static final int MAX_STACK_TRACE_ELEMENTS_PER_CAUSE = 48;
+    static final int MAX_STACK_TRACE_CHARS = 32 * 1024;
 
     private final ApplicationContext context;
     private final ParameterConverter converter;
@@ -42,8 +46,11 @@ public class RepoExecutionService {
      */
     public ExecutionResult execute(ExecutionRequest request) {
         long start = System.currentTimeMillis();
-        SqlLogStore.clear();
-
+        SqlLogStore.beginCapture();
+        String status;
+        String value;
+        String exception;
+        SqlLogStore.Capture capture;
         try {
             Class<?> repoInterface = Class.forName(request.repositoryClass());
             Object bean = context.getBean(repoInterface);
@@ -57,20 +64,19 @@ public class RepoExecutionService {
 
             String json = safeSerialize(unwrapped);
 
-            return new ExecutionResult(
-                    "SUCCESS", json,
-                    SqlLogStore.snapshot(),
-                    System.currentTimeMillis() - start,
-                    null
-            );
+            status = "SUCCESS";
+            value = json;
+            exception = null;
         } catch (Exception e) {
-            return new ExecutionResult(
-                    "FAILURE", null,
-                    SqlLogStore.snapshot(),
-                    System.currentTimeMillis() - start,
-                    stackTraceOf(e)
-            );
+            status = "FAILURE";
+            value = null;
+            exception = stackTraceOf(e);
+        } finally {
+            // This always removes the ThreadLocal, including exceptional execution.
+            capture = SqlLogStore.finishCapture();
         }
+        return new ExecutionResult(status, value, capture.entries(), System.currentTimeMillis() - start,
+                exception, capture.droppedCount(), capture.overflowed());
     }
 
     // -------------------------------------------------------------------------
@@ -90,7 +96,10 @@ public class RepoExecutionService {
     private String safeSerialize(Object value) {
         if (value == null) return "null";
         try {
-            return objectMapper.writeValueAsString(value);
+            String serialized = objectMapper.writeValueAsString(value);
+            if (serialized.length() <= MAX_SERIALIZED_RESULT_CHARS) return serialized;
+            return "\"[Result omitted: serialized value exceeds " + MAX_SERIALIZED_RESULT_CHARS
+                    + " characters]\"";
         } catch (Exception e) {
             // Lazy-loading or circular-reference issue — fall back to toString
             return "\"[Serialization failed: " + e.getMessage().replace("\"", "'") + "]\"";
@@ -98,9 +107,28 @@ public class RepoExecutionService {
     }
 
     private static String stackTraceOf(Throwable t) {
-        StringWriter sw = new StringWriter();
-        t.printStackTrace(new PrintWriter(sw));
-        return sw.toString();
+        StringBuilder trace = new StringBuilder();
+        Throwable current = t;
+        for (int cause = 0; current != null && cause < MAX_STACK_TRACE_CAUSES; cause++) {
+            if (cause > 0) appendBounded(trace, "Caused by: ");
+            appendBounded(trace, current + "\n");
+            StackTraceElement[] elements = current.getStackTrace();
+            for (int i = 0; i < elements.length && i < MAX_STACK_TRACE_ELEMENTS_PER_CAUSE; i++) {
+                appendBounded(trace, "\tat " + elements[i] + "\n");
+            }
+            if (elements.length > MAX_STACK_TRACE_ELEMENTS_PER_CAUSE) {
+                appendBounded(trace, "\t... " + (elements.length - MAX_STACK_TRACE_ELEMENTS_PER_CAUSE)
+                        + " more frames omitted\n");
+            }
+            current = current.getCause();
+        }
+        if (current != null) appendBounded(trace, "... additional causes omitted\n");
+        return trace.toString();
+    }
+
+    private static void appendBounded(StringBuilder target, String value) {
+        int remaining = MAX_STACK_TRACE_CHARS - target.length();
+        if (remaining > 0) target.append(value, 0, Math.min(remaining, value.length()));
     }
 
     private static ObjectMapper buildObjectMapper() {

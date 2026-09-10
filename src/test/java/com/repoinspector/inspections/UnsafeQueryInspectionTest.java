@@ -124,7 +124,6 @@ public class UnsafeQueryInspectionTest extends LightJavaCodeInsightFixtureTestCa
         assertEquals(0, warnings(infos, "concatenation"));
     }
 
-    // ── quick-fix ───────────────────────────────────────────────────────────--
 
     public void testAddParamQuickFix() {
         myFixture.configureByText("UserRepository.java",

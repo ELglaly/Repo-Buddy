@@ -39,10 +39,8 @@ public final class IntelliJRepoBuddyApplicationService implements RepoBuddyAppli
 
     @Override
     public CompletionStage<RepoBuddyScanResult> scan(ScanRequest request) {
-        if (project.isDisposed()) return CompletableFuture.failedFuture(new RepoBuddyException(
-                RepoBuddyErrorCode.REPOBUDDY_PROJECT_DISPOSED, "Project is disposed"));
-        if (DumbService.isDumb(project)) return CompletableFuture.failedFuture(new RepoBuddyException(
-                RepoBuddyErrorCode.REPOBUDDY_PROJECT_INDEXING, "Project indexes are not ready; retry after indexing completes"));
+        RepoBuddyException unavailable = unavailableForAnalysis();
+        if (unavailable != null) return CompletableFuture.failedFuture(unavailable);
         long started = System.nanoTime();
         return RepoBuddyIssueService.getInstance(project).requestProjectScan().thenApply(findings -> {
             List<RepoBuddyIssue> selected = normalize(findings).stream()
@@ -109,6 +107,12 @@ public final class IntelliJRepoBuddyApplicationService implements RepoBuddyAppli
 
     @Override
     public CompletionStage<ScopedIssuePage> getIssues(ScopedIssueRequest request) {
+        // Unlike a cached page request, a new scoped request starts PSI analysis and must not
+        // queue indefinitely behind IntelliJ indexing.
+        if (request.scanId() == null) {
+            RepoBuddyException unavailable = unavailableForAnalysis();
+            if (unavailable != null) return CompletableFuture.failedFuture(unavailable);
+        }
         if (request.scanId() != null) {
             try { return CompletableFuture.completedFuture(page(snapshot(request.scanId()), request)); }
             catch (RuntimeException error) { return CompletableFuture.failedFuture(error); }
@@ -136,6 +140,8 @@ public final class IntelliJRepoBuddyApplicationService implements RepoBuddyAppli
 
     @Override
     public CompletionStage<ChangeCheckResult> checkChanges(Severity severity, String ruleId) {
+        RepoBuddyException unavailable = unavailableForAnalysis();
+        if (unavailable != null) return CompletableFuture.failedFuture(unavailable);
         if (ruleId != null && RepoBuddyRules.byId(ruleId) == null)
             return CompletableFuture.failedFuture(new IllegalArgumentException("Unknown RepoBuddy rule: " + ruleId));
         return RepoBuddyChangeAnalysisService.getInstance(project).requestScan(null).thenApply(result -> {
@@ -184,6 +190,15 @@ public final class IntelliJRepoBuddyApplicationService implements RepoBuddyAppli
     }
 
     private static String newScanId() { return UUID.randomUUID().toString().replace("-", "").substring(0, 12); }
+
+    private RepoBuddyException unavailableForAnalysis() {
+        if (project.isDisposed()) return new RepoBuddyException(
+                RepoBuddyErrorCode.REPOBUDDY_PROJECT_DISPOSED, "Project is disposed");
+        if (DumbService.isDumb(project)) return new RepoBuddyException(
+                RepoBuddyErrorCode.REPOBUDDY_PROJECT_INDEXING,
+                "Project indexes are not ready; retry after indexing completes");
+        return null;
+    }
 
     public String projectId() {
         RepoBuddyRule marker = new RepoBuddyRule("project", "PROJECT", "project", "PROJECT",

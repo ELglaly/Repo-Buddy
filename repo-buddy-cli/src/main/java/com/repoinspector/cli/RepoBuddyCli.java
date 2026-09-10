@@ -47,7 +47,10 @@ public final class RepoBuddyCli implements Callable<Integer> {
 
     RepoBuddyIpcClient client() {
         Path root = ProjectLocator.resolve(project, Path.of("."));
-        SessionDescriptor session = SessionDiscovery.select(root, root.toString());
+        // The resolved path is the caller's working scope, not a user-supplied project id.
+        // Let discovery match a live session containing it so an absent IDE is reported as
+        // REPOBUDDY_IDE_NOT_RUNNING rather than a misleading selector-not-found failure.
+        SessionDescriptor session = SessionDiscovery.select(root, null);
         return new RepoBuddyIpcClient(session, Duration.ofSeconds(Math.max(1, timeoutSeconds)));
     }
 
@@ -123,7 +126,7 @@ public final class RepoBuddyCli implements Callable<Integer> {
             if (client == null) return report.ready() ? 0 : 1;
             return switch (client.toLowerCase(Locale.ROOT)) {
                 case "codex" -> configureCodex(report);
-                case "claude" -> printClaude(report);
+                case "claude" -> configureClaude(report);
                 case "generic" -> printGeneric(report);
                 default -> throw new RepoBuddyException(RepoBuddyErrorCode.REPOBUDDY_INVALID_ARGUMENT,
                         "Client must be codex, claude, or generic");
@@ -159,12 +162,33 @@ public final class RepoBuddyCli implements Callable<Integer> {
             return 0;
         }
 
-        private int printClaude(EnvironmentReport report) {
+        private int configureClaude(EnvironmentReport report) {
             if (!report.ready()) return 1;
-            List<String> command = new ArrayList<>(List.of("claude", "mcp", "add", "--scope", "user",
+            Path claude = ProcessSupport.findExecutable("claude");
+            if (claude == null) throw new RepoBuddyException(RepoBuddyErrorCode.REPOBUDDY_INVALID_ARGUMENT,
+                    "Claude Code CLI was not found on PATH");
+            List<String> command = new ArrayList<>(List.of(claude.toString(), "mcp", "add", "--scope", "user",
                     "--transport", "stdio", "repobuddy", "--"));
             command.addAll(serverCommand());
-            System.out.println("\nClaude configuration (copy and run):\n" + display(command));
+            System.out.println("\nSuggested command:\n" + display(command));
+            if (dryRun) return 0;
+            ProcessSupport.Result existing = ProcessSupport.run(root.projectRoot(),
+                    List.of(claude.toString(), "mcp", "get", "repobuddy"), root.timeoutSeconds);
+            if (existing.succeeded() && !replace) throw new RepoBuddyException(
+                    RepoBuddyErrorCode.REPOBUDDY_INVALID_ARGUMENT,
+                    "A Claude Code MCP server named repobuddy already exists; use --replace to replace it");
+            if (existing.succeeded()) {
+                ProcessSupport.Result removed = ProcessSupport.run(root.projectRoot(),
+                        List.of(claude.toString(), "mcp", "remove", "repobuddy", "--scope", "user"),
+                        root.timeoutSeconds);
+                if (!removed.succeeded()) throw commandFailure("Unable to remove existing Claude Code registration", removed);
+            }
+            ProcessSupport.Result added = ProcessSupport.run(root.projectRoot(), command, root.timeoutSeconds);
+            if (!added.succeeded()) throw commandFailure("Unable to configure Claude Code", added);
+            ProcessSupport.Result verified = ProcessSupport.run(root.projectRoot(),
+                    List.of(claude.toString(), "mcp", "get", "repobuddy"), root.timeoutSeconds);
+            if (!verified.succeeded()) throw commandFailure("Claude Code registration could not be verified", verified);
+            System.out.println("Claude Code MCP registration is ready.");
             return 0;
         }
 
@@ -453,8 +477,7 @@ public final class RepoBuddyCli implements Callable<Integer> {
     @Command(name = "projects", description = "List open RepoBuddy-enabled IntelliJ projects")
     static final class Projects extends Child {
         @Override int execute() {
-            List<SessionDescriptor> values = SessionDiscovery.readAll().stream()
-                    .filter(value -> ProcessHandle.of(value.pid()).map(ProcessHandle::isAlive).orElse(false)).toList();
+            List<SessionDescriptor> values = SessionDiscovery.readProjects();
             if (root.json()) root.printJson(values.stream().map(value -> new Project(value.projectId(), value.projectName(), value.projectRoot())).toList());
             else values.forEach(value -> System.out.printf("%-28s %s  %s%n", value.projectId(), value.projectName(), value.projectRoot()));
             return 0;

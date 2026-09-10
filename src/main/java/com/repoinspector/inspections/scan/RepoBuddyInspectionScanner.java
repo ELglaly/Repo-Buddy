@@ -27,6 +27,7 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.repoinspector.inspections.MissingPaginationInspection;
 import com.repoinspector.inspections.MissingTransactionalInspection;
 import com.repoinspector.inspections.NPlusOneQueryInspection;
+import com.repoinspector.inspections.ProductionSourceFileFilter;
 import com.repoinspector.inspections.SelfInvocationInspection;
 import com.repoinspector.inspections.UnsafeQueryInspection;
 import com.repoinspector.core.RepoBuddyRule;
@@ -35,7 +36,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -44,8 +44,10 @@ import java.util.function.Supplier;
  * their findings, so the tool window can show exactly what the editor reports — the same
  * inspection classes are reused via {@link InspectionEngine}, never reimplemented.
  *
- * <p>All PSI access happens inside a {@link ReadAction}; callers should invoke {@link #scan}
- * off the EDT (e.g. a pooled thread) in smart mode.
+ * <p>All PSI access happens inside short {@link ReadAction read actions}; callers should invoke
+ * {@link #scan} off the EDT (e.g. a pooled thread) in smart mode.  In particular, this class
+ * deliberately does not hold a read lock while it walks an entire project: a write action in the
+ * IDE must only wait for the inspection of one source file.
  */
 public final class RepoBuddyInspectionScanner {
 
@@ -71,40 +73,48 @@ public final class RepoBuddyInspectionScanner {
 
     /** Scans all Java files in {@code scope}; returns findings ordered by file then line. */
     public @NotNull List<Finding> scan(@NotNull Project project, @NotNull GlobalSearchScope scope) {
-        return ReadAction.compute(() -> {
-            List<Finding> findings = new ArrayList<>();
-            InspectionManager manager = InspectionManager.getInstance(project);
-            GlobalInspectionContext context = manager.createNewGlobalContext();
-            PsiManager psiManager = PsiManager.getInstance(project);
+        List<VirtualFile> files = ReadAction.compute(() ->
+                List.copyOf(FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope)));
+        List<Finding> findings = new ArrayList<>();
+        for (VirtualFile file : files) {
+            ProgressManager.checkCanceled();
+            if (project.isDisposed()) break;
+            findings.addAll(scanVirtualFile(project, file));
+        }
+        findings.sort((a, b) -> {
+            int byPath = a.filePath().compareToIgnoreCase(b.filePath());
+            return byPath != 0 ? byPath : Integer.compare(a.line(), b.line());
+        });
+        return findings;
+    }
 
-            Collection<VirtualFile> files = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope);
-            for (VirtualFile vf : files) {
-                ProgressManager.checkCanceled();
-                if (project.isDisposed()) break;
-                PsiFile psiFile = psiManager.findFile(vf);
-                if (psiFile != null) collectFromFile(psiFile, context, findings);
-            }
-            findings.sort((a, b) -> {
-                int byPath = a.filePath().compareToIgnoreCase(b.filePath());
-                return byPath != 0 ? byPath : Integer.compare(a.line(), b.line());
-            });
-            return findings;
+    /** Resolves and scans one virtual file in one bounded read action. */
+    public @NotNull List<Finding> scanVirtualFile(@NotNull Project project, @NotNull VirtualFile file) {
+        return ReadAction.compute(() -> {
+            if (project.isDisposed() || !file.isValid()) return List.of();
+            PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
+            return psiFile == null ? List.of() : scanOpenFile(project, psiFile);
         });
     }
 
     /** Scans a single already-open file (cheap, for the "current file" scope). */
     public @NotNull List<Finding> scanFile(@NotNull Project project, @NotNull PsiFile psiFile) {
         return ReadAction.compute(() -> {
-            List<Finding> findings = new ArrayList<>();
-            GlobalInspectionContext context = InspectionManager.getInstance(project).createNewGlobalContext();
-            collectFromFile(psiFile, context, findings);
-            findings.sort((a, b) -> Integer.compare(a.line(), b.line()));
-            return findings;
+            return scanOpenFile(project, psiFile);
         });
+    }
+
+    private @NotNull List<Finding> scanOpenFile(@NotNull Project project, @NotNull PsiFile psiFile) {
+        List<Finding> findings = new ArrayList<>();
+        GlobalInspectionContext context = InspectionManager.getInstance(project).createNewGlobalContext();
+        collectFromFile(psiFile, context, findings);
+        findings.sort((a, b) -> Integer.compare(a.line(), b.line()));
+        return findings;
     }
 
     private void collectFromFile(@NotNull PsiFile psiFile, @NotNull GlobalInspectionContext context,
                                  @NotNull List<Finding> sink) {
+        if (!ProductionSourceFileFilter.shouldAnalyze(psiFile)) return;
         VirtualFile vf = psiFile.getVirtualFile();
         String fileName = psiFile.getName();
         String filePath = vf != null ? vf.getPath() : fileName;
@@ -117,7 +127,7 @@ public final class RepoBuddyInspectionScanner {
                 int offset = element != null ? startOffset(element) : 0;
                 sink.add(new Finding(
                         ni.rule().id(), ni.rule().name(), fileName, filePath,
-                        descriptor.getLineNumber() + 1,
+                        lineOf(psiFile, offset),
                         columnOf(psiFile, offset),
                         stripTags(descriptor.getDescriptionTemplate()),
                         stableAnchor(element),

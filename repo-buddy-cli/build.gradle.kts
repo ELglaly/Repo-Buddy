@@ -35,6 +35,7 @@ tasks.jar {
 val generatedVersion = layout.buildDirectory.file("generated/cli-dist/VERSION")
 
 val generateDistributionVersion by tasks.registering {
+    inputs.property("version", project.version)
     outputs.file(generatedVersion)
     doLast {
         val output = generatedVersion.get().asFile

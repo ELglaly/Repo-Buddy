@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.elglaly"
-version = "1.0.7"
+version = "1.0.8"
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -23,14 +23,21 @@ repositories {
 // AgentRunConfigPatcher extracts it to the system temp directory at runtime,
 // so it works regardless of how or where the plugin is installed.
 evaluationDependsOn(":agent")
+evaluationDependsOn(":repo-buddy-cli")
 
 tasks.processResources {
-    dependsOn(":agent:jar")
+    dependsOn(":agent:jar", ":repo-buddy-cli:cliDistZip")
     val agentJar = project(":agent").tasks.named<Jar>("jar")
+    val cliDistribution = project(":repo-buddy-cli").tasks.named<Zip>("cliDistZip")
     inputs.files(agentJar.map { it.outputs.files })
+    inputs.files(cliDistribution.map { it.outputs.files })
     from(agentJar) {
         into("agent")
         rename { "repoBuddy-agent.jar" }
+    }
+    from(cliDistribution.map { it.archiveFile }) {
+        into("cli")
+        rename { "repobuddy-cli.zip" }
     }
 }
 
@@ -42,6 +49,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.11.0")
@@ -58,6 +66,40 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+// Process-level CLI/MCP coverage lives separately from unit and IntelliJ fixture tests.
+// It always exercises the packaged distribution, never classes from the Gradle runtime.
+val systemTestSourceSet = sourceSets.create("systemTest") {
+    java.srcDir("src/systemTest/java")
+    compileClasspath += sourceSets["main"].output + configurations["testRuntimeClasspath"]
+    runtimeClasspath += output + compileClasspath
+}
+
+configurations[systemTestSourceSet.implementationConfigurationName].extendsFrom(configurations["testImplementation"])
+configurations[systemTestSourceSet.runtimeOnlyConfigurationName].extendsFrom(configurations["testRuntimeOnly"])
+
+fun registerSystemSuite(name: String, includes: List<String>) = tasks.register<Test>(name) {
+    group = "verification"
+    description = "Runs RepoBuddy packaged $name coverage."
+    dependsOn(":repo-buddy-cli:cliDistZip")
+    testClassesDirs = systemTestSourceSet.output.classesDirs
+    classpath = systemTestSourceSet.runtimeClasspath
+    useJUnitPlatform()
+    includes.forEach { include(it) }
+    shouldRunAfter(tasks.test)
+}
+
+val cliSystemTest = registerSystemSuite("cliSystemTest", listOf("**/CliProcessSystemTest.class"))
+val mcpSystemTest = registerSystemSuite("mcpSystemTest", listOf("**/McpProcessSystemTest.class"))
+val contractTest = registerSystemSuite("contractTest", listOf("**/ContractSystemTest.class"))
+val packagingTest = registerSystemSuite("packagingTest", listOf("**/PackagingSystemTest.class"))
+val systemTest = tasks.register("systemTest") {
+    group = "verification"
+    description = "Runs all black-box packaged CLI and MCP system-test suites."
+    dependsOn(cliSystemTest, mcpSystemTest, contractTest, packagingTest)
+}
+
+tasks.named("check") { dependsOn(systemTest) }
 
 tasks {
     // Set the JVM compatibility versions
@@ -98,6 +140,10 @@ tasks {
 val releaseChecksums by tasks.registering {
     dependsOn("buildPlugin", ":repo-buddy-cli:cliDistZip")
     val output = layout.buildDirectory.file("distributions/SHA256SUMS")
+    inputs.files(
+        layout.buildDirectory.file("distributions/repobuddy-plugin-${project.version}.zip"),
+        layout.buildDirectory.file("distributions/repobuddy-cli-${project.version}.zip")
+    )
     outputs.file(output)
     doLast {
         val directory = layout.buildDirectory.dir("distributions").get().asFile
@@ -126,7 +172,24 @@ tasks.register("verifyRelease") {
         val pluginDistribution = directory.resolve("repobuddy-plugin-${project.version}.zip")
         check(pluginDistribution.isFile) { "Plugin distribution is missing" }
         check(directory.resolve("repobuddy-cli-${project.version}.zip").isFile) { "CLI distribution is missing" }
-        check(directory.resolve("SHA256SUMS").isFile) { "Release checksums are missing" }
+        val checksums = directory.resolve("SHA256SUMS")
+        check(checksums.isFile) { "Release checksums are missing" }
+        val expectedChecksums = listOf(
+            directory.resolve("repobuddy-plugin-${project.version}.zip"),
+            directory.resolve("repobuddy-cli-${project.version}.zip")
+        ).associate { artifact ->
+            val digest = MessageDigest.getInstance("SHA-256").digest(artifact.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            artifact.name to digest
+        }
+        val actualChecksums = checksums.readLines()
+            .filter { it.isNotBlank() }
+            .associate { line ->
+                val parts = line.trim().split(Regex("\\s+"), limit = 2)
+                check(parts.size == 2) { "Malformed release checksum line: $line" }
+                parts[1] to parts[0]
+            }
+        check(actualChecksums == expectedChecksums) { "Release checksums do not match generated artifacts" }
         ZipFile(pluginDistribution).use { outer ->
             val pluginJar = outer.entries().asSequence().firstOrNull {
                 it.name.endsWith("/lib/RepoBuddy-${project.version}.jar")
@@ -134,16 +197,42 @@ tasks.register("verifyRelease") {
             val nested = outer.getInputStream(pluginJar).readBytes()
             var agentFound = false
             var metadataFound = false
+            var metadata: String? = null
+            var cliBytes: ByteArray? = null
             ZipInputStream(ByteArrayInputStream(nested)).use { input ->
                 var entry = input.nextEntry
                 while (entry != null) {
                     if (entry.name == "agent/repoBuddy-agent.jar") agentFound = true
-                    if (entry.name == "META-INF/plugin.xml") metadataFound = true
+                    if (entry.name == "META-INF/plugin.xml") {
+                        metadataFound = true
+                        metadata = input.bufferedReader().readText()
+                    }
+                    if (entry.name == "cli/repobuddy-cli.zip") cliBytes = input.readBytes()
                     entry = input.nextEntry
                 }
             }
             check(agentFound) { "Embedded RepoBuddy Java agent is missing" }
             check(metadataFound) { "Plugin metadata is missing" }
+            check(Regex("<version>\\s*${Regex.escape(project.version.toString())}\\s*</version>").containsMatchIn(metadata!!)) {
+                "Plugin metadata version does not match ${project.version}"
+            }
+            check(cliBytes != null) { "Embedded RepoBuddy CLI distribution is missing" }
+            val requiredCliEntries = mutableSetOf(
+                "VERSION", "bin/repobuddy", "bin/repobuddy.bat", "lib/repobuddy.jar"
+            )
+            var embeddedVersion: String? = null
+            ZipInputStream(ByteArrayInputStream(cliBytes!!)).use { input ->
+                var entry = input.nextEntry
+                while (entry != null) {
+                    requiredCliEntries.remove(entry.name)
+                    if (entry.name == "VERSION") embeddedVersion = input.bufferedReader().readText().trim()
+                    entry = input.nextEntry
+                }
+            }
+            check(requiredCliEntries.isEmpty()) { "Embedded CLI is incomplete: $requiredCliEntries" }
+            check(embeddedVersion == project.version.toString()) {
+                "Embedded CLI version $embeddedVersion does not match plugin ${project.version}"
+            }
         }
     }
 }

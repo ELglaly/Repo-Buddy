@@ -24,7 +24,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test and package CLI
         shell: bash
-        run: ./gradlew :repo-buddy-cli:test :repo-buddy-mcp:test :repo-buddy-cli:cliDistZip
+        run: ./gradlew :repo-buddy-cli:test :repo-buddy-mcp:test systemTest
       - name: Smoke-test Unix launcher
         if: runner.os != 'Windows'
         shell: bash

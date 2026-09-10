@@ -12,12 +12,14 @@ public final class RepoBuddyCliSupport {
 
     public static String codexSetupCommand() { return "repobuddy setup codex"; }
 
-    public static Path findOnPath() {
+    public static Path findOnPath() { return findExecutable("repobuddy"); }
+
+    public static Path findExecutable(String executable) {
         String path = System.getenv("PATH");
         if (path == null || path.isBlank()) return null;
         boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        List<String> names = windows ? List.of("repobuddy.exe", "repobuddy.cmd", "repobuddy.bat", "repobuddy")
-                : List.of("repobuddy");
+        List<String> names = windows ? List.of(executable + ".exe", executable + ".cmd", executable + ".bat", executable)
+                : List.of(executable);
         for (String directory : path.split(java.io.File.pathSeparator)) {
             if (directory.isBlank()) continue;
             for (String name : names) {
