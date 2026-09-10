@@ -61,7 +61,6 @@ public class MissingPaginationInspectionTest extends LightJavaCodeInsightFixture
                 .count();
     }
 
-    // ── positive ──────────────────────────────────────────────────────────────
 
     public void testUnboundedListFindAll_isFlagged() {
         assertEquals(1, warnings(repo("  List<User> findAllByStatus(String status);")));
@@ -71,7 +70,6 @@ public class MissingPaginationInspectionTest extends LightJavaCodeInsightFixture
         assertEquals(1, warnings(repo("  Stream<User> getAllUsers();")));
     }
 
-    // ── suppression ─────────────────────────────────────────────────────────--
 
     public void testPageReturn_notFlagged() {
         assertEquals(0, warnings(repo("  Page<User> findAllByStatus(String status, Pageable pageable);")));
@@ -119,7 +117,6 @@ public class MissingPaginationInspectionTest extends LightJavaCodeInsightFixture
         assertEquals(0, warnings(myFixture.doHighlighting()));
     }
 
-    // ── quick-fix ─────────────────────────────────────────────────────────────
 
     public void testConvertToPageQuickFix() {
         // caret inside the return type element, which is where the warning is anchored

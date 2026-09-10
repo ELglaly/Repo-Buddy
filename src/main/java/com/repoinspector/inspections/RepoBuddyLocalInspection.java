@@ -1,7 +1,9 @@
 package com.repoinspector.inspections;
 
 import com.intellij.codeInspection.AbstractBaseJavaLocalInspectionTool;
+import com.intellij.psi.PsiFile;
 import com.repoinspector.settings.RepoBuddySettings;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Common base for the RepoBuddy Java inspections that adds panel-only gating.
@@ -14,7 +16,8 @@ import com.repoinspector.settings.RepoBuddySettings;
  * findings regardless of the setting.
  *
  * <p>Subclasses must short-circuit {@code buildVisitor} with
- * {@code if (!shouldAnalyze()) return PsiElementVisitor.EMPTY_VISITOR;} as their first statement.
+ * {@code if (!shouldAnalyze(holder.getFile())) return PsiElementVisitor.EMPTY_VISITOR;} as their
+ * first statement.
  */
 public abstract class RepoBuddyLocalInspection extends AbstractBaseJavaLocalInspectionTool {
 
@@ -33,7 +36,8 @@ public abstract class RepoBuddyLocalInspection extends AbstractBaseJavaLocalInsp
      * ({@code alwaysAnalyze}) or panel-only mode is off, in which case the inspection runs in the
      * editor daemon as usual.
      */
-    protected final boolean shouldAnalyze() {
-        return alwaysAnalyze || !RepoBuddySettings.getInstance().isPanelOnlyMode();
+    protected final boolean shouldAnalyze(@NotNull PsiFile file) {
+        return (alwaysAnalyze || !RepoBuddySettings.getInstance().isPanelOnlyMode())
+                && ProductionSourceFileFilter.shouldAnalyze(file);
     }
 }

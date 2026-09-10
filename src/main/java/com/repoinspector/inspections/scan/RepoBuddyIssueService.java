@@ -25,7 +25,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Single source of truth for RepoBuddy inspection findings within a project.
@@ -46,6 +49,13 @@ public final class RepoBuddyIssueService implements Disposable {
     private final Map<String, List<Finding>> byFile = new ConcurrentHashMap<>();
 
     private final MergingUpdateQueue refreshQueue;
+    private final Object scanLock = new Object();
+    private final Set<VirtualFile> dirtyFiles = ConcurrentHashMap.newKeySet();
+    private final AtomicLong requestedGeneration = new AtomicLong();
+    private CompletableFuture<List<Finding>> pendingProjectScan;
+    private boolean fullScanRequested;
+    private boolean smartDrainScheduled;
+    private boolean workerActive;
 
     public RepoBuddyIssueService(@NotNull Project project) {
         this.project = project;
@@ -58,9 +68,6 @@ public final class RepoBuddyIssueService implements Disposable {
         return project.getService(RepoBuddyIssueService.class);
     }
 
-    // =========================================================================
-    // Queries (read from cache — cheap, callable from any thread)
-    // =========================================================================
 
     /** Cached findings for one file, or an empty list if it has not been scanned. */
     public @NotNull List<Finding> findingsForFile(@Nullable VirtualFile file) {
@@ -90,25 +97,34 @@ public final class RepoBuddyIssueService implements Disposable {
         return total;
     }
 
-    // =========================================================================
-    // Refresh (async, off-EDT)
-    // =========================================================================
 
     /** Re-scans the whole project and replaces the entire cache. */
     public void refreshProject() {
-        runScan(() -> scanner.scan(project, GlobalSearchScope.projectScope(project)), true, null);
+        requestProjectScan();
+    }
+
+    /** Runs or joins the current full-project scan and completes after the shared cache is updated. */
+    public @NotNull CompletableFuture<List<Finding>> requestProjectScan() {
+        synchronized (scanLock) {
+            if (pendingProjectScan != null && !pendingProjectScan.isDone()) return pendingProjectScan;
+            CompletableFuture<List<Finding>> future = new CompletableFuture<>();
+            pendingProjectScan = future;
+            if (project.isDisposed()) {
+                future.completeExceptionally(new IllegalStateException("Project is disposed"));
+                return future;
+            }
+            requestedGeneration.incrementAndGet();
+            fullScanRequested = true;
+            scheduleSmartDrain();
+            return future;
+        }
     }
 
     /** Re-scans a single file and replaces only that file's cache entry. */
     public void refreshFile(@Nullable VirtualFile file) {
         if (file == null || !file.isValid()) return;
-        runScan(() -> {
-            PsiFile psiFile = ReadAction.compute(() -> {
-                PsiFile f = PsiManager.getInstance(project).findFile(file);
-                return (f != null && f.isValid()) ? f : null;
-            });
-            return psiFile == null ? List.<Finding>of() : scanner.scanFile(project, psiFile);
-        }, false, file);
+        dirtyFiles.add(file);
+        synchronized (scanLock) { scheduleSmartDrain(); }
     }
 
     /** Re-scans every file currently open in an editor (used after a settings change). */
@@ -118,15 +134,100 @@ public final class RepoBuddyIssueService implements Disposable {
         }
     }
 
-    private void runScan(@NotNull java.util.function.Supplier<List<Finding>> task,
-                         boolean replaceAll, @Nullable VirtualFile singleFile) {
+    /** One smart-mode callback and one worker serialize full and incremental scans. */
+    private void scheduleSmartDrain() {
+        if (smartDrainScheduled || project.isDisposed()) return;
+        smartDrainScheduled = true;
         DumbService.getInstance(project).runWhenSmart(() ->
-                ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                    List<Finding> result = task.get();
-                    ApplicationManager.getApplication().invokeLater(
-                            () -> applyResult(result, replaceAll, singleFile),
-                            project.getDisposed());
-                }));
+                ApplicationManager.getApplication().executeOnPooledThread(this::drain));
+    }
+
+    private void drain() {
+        final boolean full;
+        final long generation;
+        final List<VirtualFile> files;
+        final CompletableFuture<List<Finding>> projectFuture;
+        synchronized (scanLock) {
+            smartDrainScheduled = false;
+            if (project.isDisposed() || workerActive) return;
+            full = fullScanRequested;
+            if (!full && dirtyFiles.isEmpty()) return;
+            workerActive = true;
+            generation = requestedGeneration.get();
+            projectFuture = full ? pendingProjectScan : null;
+            if (full) {
+                fullScanRequested = false;
+                files = List.of();
+            } else {
+                files = List.copyOf(dirtyFiles);
+                dirtyFiles.removeAll(files);
+            }
+        }
+        try {
+            if (project.isDisposed()) throw new IllegalStateException("Project is disposed");
+            if (full) {
+                List<Finding> findings = scanner.scan(project, GlobalSearchScope.projectScope(project));
+                publishFull(generation, findings, projectFuture);
+            } else {
+                Map<VirtualFile, List<Finding>> findings = new ConcurrentHashMap<>();
+                for (VirtualFile file : files) {
+                    if (project.isDisposed()) break;
+                    findings.put(file, scanner.scanVirtualFile(project, file));
+                }
+                publishIncremental(findings);
+            }
+        } catch (RuntimeException error) {
+            if (projectFuture != null) projectFuture.completeExceptionally(error);
+            if (full) releaseFullWorker();
+        } finally {
+            synchronized (scanLock) {
+                if (!full) {
+                    workerActive = false;
+                    if (!dirtyFiles.isEmpty() || fullScanRequested) scheduleSmartDrain();
+                }
+            }
+        }
+    }
+
+    private void publishFull(long generation, @NotNull List<Finding> findings,
+                             @Nullable CompletableFuture<List<Finding>> future) {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+                if (project.isDisposed() || generation != requestedGeneration.get()) {
+                    if (future != null) future.cancel(false);
+                    return;
+                }
+                applyResult(findings, true, null);
+                if (future != null) completeOffEdt(future, findings);
+                synchronized (scanLock) {
+                    if (pendingProjectScan == future) pendingProjectScan = null;
+                }
+            } finally {
+                // The dirty follow-up must start only after the full replacement is visible;
+                // otherwise an older full result could overwrite the newer file result.
+                releaseFullWorker();
+            }
+        }, project.getDisposed());
+    }
+
+    private void releaseFullWorker() {
+        synchronized (scanLock) {
+            workerActive = false;
+            if (!project.isDisposed() && (!dirtyFiles.isEmpty() || fullScanRequested)) scheduleSmartDrain();
+        }
+    }
+
+    private void publishIncremental(@NotNull Map<VirtualFile, List<Finding>> findings) {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (project.isDisposed()) return;
+            applyIncrementalResults(findings);
+        }, project.getDisposed());
+    }
+
+    /** Futures are deliberately completed outside the EDT so client continuations stay off it. */
+    private static void completeOffEdt(@NotNull CompletableFuture<List<Finding>> future,
+                                       @NotNull List<Finding> findings) {
+        ApplicationManager.getApplication().executeOnPooledThread(() -> future.complete(List.copyOf(findings)));
     }
 
     private void applyResult(@NotNull List<Finding> result, boolean replaceAll,
@@ -143,14 +244,22 @@ public final class RepoBuddyIssueService implements Disposable {
         fireUpdated();
     }
 
+    /** Applies an incremental batch atomically from the UI's perspective and notifies once. */
+    private void applyIncrementalResults(@NotNull Map<VirtualFile, List<Finding>> results) {
+        for (Map.Entry<VirtualFile, List<Finding>> entry : results.entrySet()) {
+            VirtualFile file = entry.getKey();
+            List<Finding> findings = entry.getValue();
+            if (findings.isEmpty()) byFile.remove(file.getPath());
+            else byFile.put(file.getPath(), List.copyOf(findings));
+        }
+        if (!results.isEmpty()) fireUpdated();
+    }
+
     private void fireUpdated() {
         project.getMessageBus().syncPublisher(RepoBuddyIssueListener.TOPIC).issuesUpdated();
         EditorNotifications.getInstance(project).updateAllNotifications();
     }
 
-    // =========================================================================
-    // Live-edit trigger: debounced re-scan of an edited Java file
-    // =========================================================================
 
     private void installEditTrigger() {
         PsiManager.getInstance(project).addPsiTreeChangeListener(new PsiTreeChangeAdapter() {
@@ -179,6 +288,10 @@ public final class RepoBuddyIssueService implements Disposable {
     @Override
     public void dispose() {
         byFile.clear();
+        dirtyFiles.clear();
+        synchronized (scanLock) {
+            if (pendingProjectScan != null) pendingProjectScan.cancel(true);
+        }
         Disposer.dispose(refreshQueue);
     }
 }

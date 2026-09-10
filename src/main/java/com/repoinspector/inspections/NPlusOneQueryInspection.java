@@ -88,7 +88,7 @@ public class NPlusOneQueryInspection extends RepoBuddyLocalInspection {
 
     @Override
     public @NotNull PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
-        if (!shouldAnalyze()) return PsiElementVisitor.EMPTY_VISITOR;
+        if (!shouldAnalyze(holder.getFile())) return PsiElementVisitor.EMPTY_VISITOR;
         return new JavaElementVisitor() {
             @Override
             public void visitForeachStatement(@NotNull PsiForeachStatement statement) {

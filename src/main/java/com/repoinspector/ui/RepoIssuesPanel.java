@@ -11,6 +11,7 @@ import com.intellij.util.ui.JBUI;
 import com.repoinspector.inspections.scan.RepoBuddyIssueListener;
 import com.repoinspector.inspections.scan.RepoBuddyIssueService;
 import com.repoinspector.inspections.scan.RepoBuddyInspectionScanner.Finding;
+import com.repoinspector.inspections.scan.RepoBuddyChangeAnalysisService;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -64,6 +65,8 @@ public class RepoIssuesPanel extends JPanel implements Disposable {
     private final TableRowSorter<DefaultTableModel> rowSorter;
     private final JTextField searchField;
     private final JToggleButton currentFileToggle;
+    private final JToggleButton allIssuesToggle;
+    private final JToggleButton changedIssuesToggle;
     private final JLabel statusLabel;
 
     private final JLabel totalValue = heroLabel(INDIGO);
@@ -88,6 +91,16 @@ public class RepoIssuesPanel extends JPanel implements Disposable {
         currentFileToggle = UITheme.toggleButton("Current file");
         currentFileToggle.setToolTipText("Scan only the file open in the editor");
         currentFileToggle.addItemListener(e -> runScan());
+
+        allIssuesToggle = UITheme.toggleButton("All Issues");
+        changedIssuesToggle = UITheme.toggleButton("Changed Issues");
+        ButtonGroup analysisModes = new ButtonGroup();
+        analysisModes.add(allIssuesToggle);
+        analysisModes.add(changedIssuesToggle);
+        allIssuesToggle.setSelected(true);
+        allIssuesToggle.addActionListener(e -> runScan());
+        changedIssuesToggle.addActionListener(e -> runScan());
+        changedIssuesToggle.setToolTipText("Show only RepoBuddy issues introduced since Git HEAD");
 
         JButton refreshBtn = UITheme.iconButton("↻");
         refreshBtn.setToolTipText("Re-run RepoBuddy inspections");
@@ -196,6 +209,12 @@ public class RepoIssuesPanel extends JPanel implements Disposable {
         toolbar.add(Box.createHorizontalStrut(JBUI.scale(6)));
         toolbar.add(UITheme.toolbarDivider());
         toolbar.add(Box.createHorizontalStrut(JBUI.scale(6)));
+        toolbar.add(allIssuesToggle);
+        toolbar.add(Box.createHorizontalStrut(JBUI.scale(2)));
+        toolbar.add(changedIssuesToggle);
+        toolbar.add(Box.createHorizontalStrut(JBUI.scale(6)));
+        toolbar.add(UITheme.toolbarDivider());
+        toolbar.add(Box.createHorizontalStrut(JBUI.scale(6)));
         toolbar.add(currentFileToggle);
         toolbar.add(Box.createHorizontalGlue());
         toolbar.add(exportBtn);
@@ -235,6 +254,20 @@ public class RepoIssuesPanel extends JPanel implements Disposable {
     private void runScan() {
         statusLabel.setText("Scanning…");
         RepoBuddyIssueService service = RepoBuddyIssueService.getInstance(project);
+        if (changedIssuesToggle.isSelected()) {
+            VirtualFile current = currentFileToggle.isSelected() ? service.selectedFile() : null;
+            if (currentFileToggle.isSelected() && current == null) {
+                findings = List.of();
+                updateTable();
+                statusLabel.setText("No file open in the editor");
+                return;
+            }
+            RepoBuddyChangeAnalysisService.getInstance(project).requestScan(current).exceptionally(error -> {
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Changed Issues scan failed"));
+                return null;
+            });
+            return;
+        }
         if (currentFileToggle.isSelected()) {
             VirtualFile currentFile = service.selectedFile();
             if (currentFile == null) {
@@ -252,9 +285,9 @@ public class RepoIssuesPanel extends JPanel implements Disposable {
     /** Reloads the table from the shared cache (runs on the EDT when findings change). */
     private void reloadFromService() {
         RepoBuddyIssueService service = RepoBuddyIssueService.getInstance(project);
-        findings = currentFileToggle.isSelected()
-                ? service.findingsForFile(service.selectedFile())
-                : service.findings();
+        findings = changedIssuesToggle.isSelected()
+                ? RepoBuddyChangeAnalysisService.getInstance(project).latest().introducedFindings()
+                : currentFileToggle.isSelected() ? service.findingsForFile(service.selectedFile()) : service.findings();
         updateTable();
     }
 
@@ -294,7 +327,16 @@ public class RepoIssuesPanel extends JPanel implements Disposable {
         filesValue.setText(String.valueOf(files));
 
         String scope = currentFileToggle.isSelected() ? "current file" : "project";
-        String base = total + (total == 1 ? " issue" : " issues") + " · " + scope;
+        String base;
+        if (changedIssuesToggle.isSelected()) {
+            var result = RepoBuddyChangeAnalysisService.getInstance(project).latest();
+            base = result.availability() == com.repoinspector.core.ChangeAvailability.AVAILABLE
+                    ? total + (total == 1 ? " introduced issue" : " introduced issues") + " · " + scope
+                    + (result.preExistingCount() == 0 ? "" : " · " + result.preExistingCount() + " pre-existing hidden")
+                    : result.message();
+        } else {
+            base = total + (total == 1 ? " issue" : " issues") + " · " + scope;
+        }
         statusLabel.setText(visible < total ? base + " · showing " + visible : base);
     }
 

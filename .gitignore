@@ -29,6 +29,8 @@ out/
 .springBeans
 .sts4-cache
 bin/
+!/repo-buddy-cli/src/dist/bin/
+!/repo-buddy-cli/src/dist/bin/**
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
@@ -48,6 +50,11 @@ bin/
 ### Claude Code ###
 .claude/
 .intellijPlatform/
+
+### Local Codex guidance ###
+.codex/
+AGENTS.md
+/.github/java-upgrade/
 
 ### Logs ###
 *.log

@@ -1,0 +1,7 @@
+{
+  "expectedTotal": 2,
+  "findings": [
+    {"rule":"unsafe-query","severity":"HIGH","path":"src/main/java/example/UnsafeRepository.java","line":5,"symbol":"findAllActive","messageFragment":"concatenation"},
+    {"rule":"missing-pagination","severity":"MEDIUM","path":"src/main/java/example/UnsafeRepository.java","line":6,"symbol":"findAllActive","messageFragment":"pagination"}
+  ]
+}

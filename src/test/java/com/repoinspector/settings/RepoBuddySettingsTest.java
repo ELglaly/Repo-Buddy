@@ -24,6 +24,14 @@ class RepoBuddySettingsTest {
     }
 
     @Test
+    void localIntegration_isOptInAndRoundTrips() {
+        RepoBuddySettings settings = new RepoBuddySettings();
+        assertFalse(settings.isLocalIntegrationEnabled());
+        settings.setLocalIntegrationEnabled(true);
+        assertTrue(settings.isLocalIntegrationEnabled());
+    }
+
+    @Test
     void setPanelOnlyMode_roundTrips() {
         RepoBuddySettings settings = new RepoBuddySettings();
         settings.setPanelOnlyMode(false);

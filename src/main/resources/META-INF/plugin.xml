@@ -14,6 +14,7 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.java</depends>
+    <depends>Git4Idea</depends>
 
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
@@ -92,6 +93,8 @@
 
         <postStartupActivity
                 implementation="com.repoinspector.runner.startup.RepoBuddyAgentMigrationActivity"/>
+        <postStartupActivity
+                implementation="com.repoinspector.integration.RepoBuddyLocalIntegrationStartupActivity"/>
 
         <java.programPatcher implementation="com.repoinspector.runner.startup.RepoBuddyJavaProgramPatcher"/>
 
@@ -126,6 +129,17 @@
     </applicationListeners>
 
     <actions>
+        <group id="RepoBuddy.Integration" text="RepoBuddy Integration" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="RepoBuddy.ConfigureCodex"
+                    class="com.repoinspector.actions.ConfigureCodexAction"
+                    text="Configure Codex"
+                    description="Install the RepoBuddy CLI and configure Codex MCP access"/>
+            <action id="RepoBuddy.ConfigureClaudeCode"
+                    class="com.repoinspector.actions.ConfigureClaudeCodeAction"
+                    text="Configure Claude Code"
+                    description="Install the RepoBuddy CLI and configure Claude Code MCP access"/>
+        </group>
         <action id="RepoBuddy.TraceRepositoryCalls"
                 class="com.repoinspector.actions.TraceRepositoryCallsAction"
                 text="Trace Repository Calls for This API"

@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.repoinspector"
-version = "1.0.0"
+version = rootProject.version
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -29,6 +29,13 @@ dependencies {
 
     annotationProcessor(platform("org.springframework.boot:spring-boot-dependencies:2.7.18"))
     annotationProcessor("org.springframework.boot:spring-boot-autoconfigure-processor")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.2")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.withType<JavaCompile> {
